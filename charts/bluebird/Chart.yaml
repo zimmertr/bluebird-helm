@@ -7,7 +7,7 @@ version: 0.1.0
 # appVersion tracks the default bluebird container image tag when none is supplied.
 appVersion: "0.3.2"
 home: https://bluebirdforecast.com
-icon: https://bluebirdforecast.com/favicon.svg
+icon: https://bluebirdforecast.com/icon.png
 sources:
   - https://github.com/zimmertr/bluebird
   - https://github.com/zimmertr/bluebird-helm
@@ -20,7 +20,6 @@ keywords:
 maintainers:
   - name: TJ Zimmerman
 annotations:
-  artifacthub.io/category: others
   artifacthub.io/license: GPL-3.0-only
   artifacthub.io/prerelease: "false"
   artifacthub.io/links: |
