@@ -58,10 +58,16 @@ jobs:
       - name: Set up ORAS
         uses: oras-project/setup-oras@v1
 
+      # oras reads ~/.docker/config.json; login-action writes it cleanly. The
+      # registry host must match the push reference host so oras finds the creds.
+      - name: Log in to Docker Hub for ORAS
+        uses: docker/login-action@v3
+        with:
+          registry: registry-1.docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Publish Artifact Hub metadata
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           # No-op until the repo is registered on Artifact Hub and its issued
           # repositoryID recorded in the metadata file — an unclaimed push does
@@ -72,7 +78,6 @@ jobs:
             echo "repositoryID not set — skipping Artifact Hub metadata push."
             exit 0
           fi
-          echo "$DOCKERHUB_TOKEN" | oras login registry-1.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
           oras push \
             registry-1.docker.io/zimmertr/bluebird-helm:artifacthub.io \
             --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
