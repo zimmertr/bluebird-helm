@@ -1,0 +1,38 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: {{ include "bluebird.fullname" . }}
+  namespace: {{ include "bluebird.namespace" . }}
+  labels:
+    {{- include "bluebird.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    {{- toYaml .Values.ingress.gatewaySelector | nindent 4 }}
+  servers:
+    - hosts:
+        {{- toYaml .Values.ingress.hosts | nindent 8 }}
+      port:
+        name: http
+        number: {{ .Values.ingress.port }}
+        protocol: HTTP
+      {{- if .Values.ingress.httpsRedirect }}
+      tls:
+        httpsRedirect: true
+      {{- end }}
+    {{- if .Values.ingress.tls.enabled }}
+    - hosts:
+        {{- toYaml .Values.ingress.hosts | nindent 8 }}
+      port:
+        name: https
+        number: 443
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: {{ required "ingress.tls.credentialName is required when ingress.tls.enabled" .Values.ingress.tls.credentialName }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,115 @@
+{{- $isRollout := eq (include "bluebird.isRollout" .) "true" -}}
+apiVersion: {{ $isRollout | ternary "argoproj.io/v1alpha1" "apps/v1" }}
+kind: {{ $isRollout | ternary "Rollout" "Deployment" }}
+metadata:
+  name: {{ include "bluebird.fullname" . }}
+  namespace: {{ include "bluebird.namespace" . }}
+  labels:
+    {{- include "bluebird.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "bluebird.selectorLabels" . | nindent 6 }}
+  {{- if eq .Values.strategy "Canary" }}
+  strategy:
+    canary:
+      stableService: {{ include "bluebird.fullname" . }}
+      canaryService: {{ include "bluebird.fullname" . }}-canary
+      stableMetadata:
+        labels:
+          role: stable
+      canaryMetadata:
+        labels:
+          role: canary
+      dynamicStableScale: {{ .Values.canary.dynamicStableScale }}
+      {{- with .Values.canary.steps }}
+      steps:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and .Values.canary.trafficRouting .Values.ingress.enabled }}
+      trafficRouting:
+        istio:
+          virtualService:
+            name: {{ include "bluebird.fullname" . }}
+            routes:
+              - {{ include "bluebird.fullname" . }}-stable
+      {{- end }}
+  {{- else if eq .Values.strategy "BlueGreen" }}
+  strategy:
+    blueGreen:
+      activeService: {{ include "bluebird.fullname" . }}
+      previewService: {{ include "bluebird.fullname" . }}-canary
+      autoPromotionEnabled: {{ .Values.blueGreen.autoPromotionEnabled }}
+  {{- else }}
+  strategy:
+    type: {{ .Values.strategy }}
+    {{- if and (eq .Values.strategy "RollingUpdate") .Values.rollingUpdate }}
+    rollingUpdate:
+      {{- toYaml .Values.rollingUpdate | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "bluebird.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: bluebird
+          image: {{ include "bluebird.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          {{- with .Values.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            {{- toYaml (omit .Values.probes.startup "enabled") | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

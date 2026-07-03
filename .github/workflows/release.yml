@@ -1,0 +1,81 @@
+name: Release Chart
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'charts/**'
+      - 'artifacthub-repo.yml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish OCI chart
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # git tag + GitHub release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # GitVersion needs full history
+
+      - uses: gittools/actions/gitversion/setup@v3
+        with:
+          versionSpec: '6.x'
+      - id: gitversion
+        uses: gittools/actions/gitversion/execute@v3
+
+      - uses: azure/setup-helm@v4
+      - uses: oras-project/setup-oras@v1
+
+      # Charts are semver-tagged; skip if this version was already pushed.
+      - name: Check if chart version already published
+        id: exists
+        run: |
+          VER="${{ steps.gitversion.outputs.semVer }}"
+          if helm show chart "oci://registry-1.docker.io/zimmertr/bluebird-helm" --version "$VER" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Chart $VER already published — skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package & push chart
+        if: steps.exists.outputs.exists == 'false'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          VER="${{ steps.gitversion.outputs.semVer }}"
+          echo "$DOCKERHUB_TOKEN" | helm registry login registry-1.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+          helm package charts/bluebird --version "$VER"
+          helm push "bluebird-helm-${VER}.tgz" oci://registry-1.docker.io/zimmertr
+
+      # Refresh the Artifact Hub ownership/metadata artifact (idempotent).
+      - name: Push Artifact Hub metadata
+        if: steps.exists.outputs.exists == 'false'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          echo "$DOCKERHUB_TOKEN" | oras login registry-1.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+          oras push registry-1.docker.io/zimmertr/bluebird-helm:artifacthub.io \
+            --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
+            artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+
+      - name: Tag & release
+        if: steps.exists.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER="${{ steps.gitversion.outputs.semVer }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${VER}" -m "Chart v${VER}"
+          git push origin "v${VER}"
+          gh release create "v${VER}" --title "v${VER}" --generate-notes

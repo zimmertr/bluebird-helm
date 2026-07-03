@@ -1,0 +1,82 @@
+nameOverride: ""
+fullnameOverride: ""
+commonLabels: {}
+commonAnnotations: {}
+
+replicas: 1
+
+image:
+  name: zimmertr/bluebird
+  tag: latest
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+containerPort: 8000
+extraEnv: []
+resources: {}
+podSecurityContext: {}
+securityContext: {}
+
+probes:
+  liveness:
+    httpGet:
+      path: /
+      port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 30
+  readiness:
+    httpGet:
+      path: /
+      port: 8000
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  startup:
+    enabled: true
+    httpGet:
+      path: /
+      port: 8000
+    failureThreshold: 30
+    periodSeconds: 5
+
+# RollingUpdate | Recreate -> Deployment. Canary | BlueGreen -> Argo Rollout.
+strategy: RollingUpdate
+rollingUpdate:
+  maxSurge: 25%
+  maxUnavailable: 25%
+canary:
+  dynamicStableScale: true
+  trafficRouting: true
+  steps:
+    - setWeight: 33
+    - setWeight: 66
+    - setWeight: 100
+blueGreen:
+  autoPromotionEnabled: true
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+
+ingress:
+  enabled: false
+  gatewaySelector:
+    istio: gateway
+  hosts:
+    - chart-example.local
+  port: 80
+  httpsRedirect: false
+  tls:
+    enabled: false
+    credentialName: ""
+  mesh: true
+
+experiment:
+  enabled: false
+  host: ""

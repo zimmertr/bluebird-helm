@@ -1,0 +1,11 @@
+# Artifact Hub repository metadata.
+# Pushed to the OCI repo via ORAS under the special "artifacthub.io" tag to
+# enable the Verified Publisher badge and ownership claim. See:
+# https://artifacthub.io/docs/topics/repositories/#repository-metadata-file
+#
+# repositoryID is issued by Artifact Hub after the repo is registered in the UI
+# (Phase 6). owners[].email MUST match the Artifact Hub account email.
+repositoryID: ""            # TODO: fill from Artifact Hub after registration
+owners:
+  - name: TJ Zimmerman
+    email: tj@tjzimmerman.com

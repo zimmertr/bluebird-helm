@@ -1,0 +1,30 @@
+apiVersion: v2
+name: bluebird-helm
+description: A map-based weather window finder for hikers and mountaineers. Deploys as a plain Deployment by default; Argo Rollouts and Istio are opt-in.
+type: application
+# version is overwritten at package time by CI (GitVersion). Kept here for local `helm template`.
+version: 0.1.0
+# appVersion tracks the default bluebird container image tag when none is supplied.
+appVersion: "0.3.2"
+home: https://bluebirdforecast.com
+icon: https://bluebirdforecast.com/favicon.svg
+sources:
+  - https://github.com/zimmertr/bluebird
+  - https://github.com/zimmertr/bluebird-helm
+keywords:
+  - weather
+  - hiking
+  - mountaineering
+  - argo-rollouts
+  - istio
+maintainers:
+  - name: TJ Zimmerman
+annotations:
+  artifacthub.io/category: others
+  artifacthub.io/license: GPL-3.0-only
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/links: |
+    - name: Bluebird application source
+      url: https://github.com/zimmertr/bluebird
+    - name: Live site
+      url: https://bluebirdforecast.com

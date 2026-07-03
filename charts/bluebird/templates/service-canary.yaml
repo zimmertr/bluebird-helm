@@ -1,0 +1,23 @@
+{{- if eq (include "bluebird.isRollout" .) "true" }}
+{{- /* Second service used by Argo Rollouts: canaryService (Canary) or previewService (BlueGreen). */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bluebird.fullname" . }}-canary
+  namespace: {{ include "bluebird.namespace" . }}
+  labels:
+    {{- include "bluebird.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "bluebird.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+{{- end }}

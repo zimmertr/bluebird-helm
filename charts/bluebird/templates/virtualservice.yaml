@@ -1,0 +1,51 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: {{ include "bluebird.fullname" . }}
+  namespace: {{ include "bluebird.namespace" . }}
+  labels:
+    {{- include "bluebird.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  hosts:
+    {{- toYaml .Values.ingress.hosts | nindent 4 }}
+    {{- if .Values.ingress.mesh }}
+    - {{ include "bluebird.fullname" . }}.{{ include "bluebird.namespace" . }}.svc.cluster.local
+    {{- end }}
+  gateways:
+    {{- if .Values.ingress.mesh }}
+    - mesh
+    {{- end }}
+    - {{ include "bluebird.fullname" . }}
+  http:
+    {{- if .Values.experiment.enabled }}
+    - name: {{ include "bluebird.fullname" . }}-experiment
+      match:
+        - headers:
+            experiment:
+              exact: "true"
+      route:
+        - destination:
+            host: {{ default (printf "%s-canary" (include "bluebird.fullname" .)) .Values.experiment.host }}
+            port:
+              number: {{ .Values.service.port }}
+    {{- end }}
+    - name: {{ include "bluebird.fullname" . }}-stable
+      route:
+        - destination:
+            host: {{ include "bluebird.fullname" . }}
+            port:
+              number: {{ .Values.service.port }}
+          weight: 100
+        {{- if eq .Values.strategy "Canary" }}
+        - destination:
+            host: {{ include "bluebird.fullname" . }}-canary
+            port:
+              number: {{ .Values.service.port }}
+          weight: 0
+        {{- end }}
+{{- end }}

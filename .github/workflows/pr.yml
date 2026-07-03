@@ -1,0 +1,67 @@
+name: Chart PR
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: chart-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-render:
+    name: Lint & render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: helm lint
+        run: helm lint charts/bluebird
+      - name: Render stable scenario (Canary + Istio)
+        run: |
+          helm template bluebird charts/bluebird -n bluebird-system \
+            --set strategy=Canary --set ingress.enabled=true \
+            --set 'ingress.hosts[0]=bluebirdforecast.com' \
+            --set ingress.tls.enabled=true --set ingress.tls.credentialName=bluebird \
+            --set ingress.httpsRedirect=true >/dev/null
+      - name: Render preview scenario (Deployment + Istio)
+        run: |
+          helm template bluebird-pr-1 charts/bluebird -n bluebird-system \
+            --set image.name=zimmertr/bluebird-pr \
+            --set image.tag=pr-1-deadbeef --set replicas=1 \
+            --set ingress.enabled=true \
+            --set 'ingress.hosts[0]=pr-1.ganymede.sol.milkyway' >/dev/null
+      - name: Render portable scenario (plain Deployment, no add-ons)
+        run: helm template bluebird charts/bluebird >/dev/null
+
+  publish-prerelease:
+    name: Publish prerelease chart
+    runs-on: ubuntu-latest
+    # Only same-repo PRs (fork PRs have no secrets and read-only tokens).
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: gittools/actions/gitversion/setup@v3
+        with:
+          versionSpec: '6.x'
+      - id: gitversion
+        uses: gittools/actions/gitversion/execute@v3
+      - uses: azure/setup-helm@v4
+      - name: Package & push prerelease
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          SHORT="$(echo '${{ github.event.pull_request.head.sha }}' | cut -c1-7)"
+          VER="${{ steps.gitversion.outputs.majorMinorPatch }}-pr${{ github.event.pull_request.number }}.g${SHORT}"
+          echo "Publishing prerelease chart $VER"
+          echo "$DOCKERHUB_TOKEN" | helm registry login registry-1.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+          helm package charts/bluebird --version "$VER"
+          helm push "bluebird-helm-${VER}.tgz" oci://registry-1.docker.io/zimmertr

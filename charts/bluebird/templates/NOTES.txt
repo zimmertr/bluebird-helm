@@ -1,0 +1,17 @@
+{{ include "bluebird.fullname" . }} ({{ eq (include "bluebird.isRollout" .) "true" | ternary "Argo Rollout" "Deployment" }}, strategy: {{ .Values.strategy }}) deployed in namespace "{{ include "bluebird.namespace" . }}".
+
+Image:     {{ include "bluebird.image" . }}
+Replicas:  {{ .Values.replicas }}
+
+Reach it:
+{{- if .Values.ingress.enabled }}
+  Istio ingress hosts: {{ join ", " .Values.ingress.hosts }} (port {{ .Values.ingress.port }}{{ if .Values.ingress.tls.enabled }}, TLS via {{ .Values.ingress.tls.credentialName }}{{ end }})
+{{- else }}
+  kubectl port-forward -n {{ include "bluebird.namespace" . }} svc/{{ include "bluebird.fullname" . }} 8080:{{ .Values.service.port }}
+  # then open http://localhost:8080
+{{- end }}
+{{- if eq (include "bluebird.isRollout" .) "true" }}
+
+Rollout status:
+  kubectl argo rollouts get rollout {{ include "bluebird.fullname" . }} -n {{ include "bluebird.namespace" . }} --watch
+{{- end }}
