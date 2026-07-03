@@ -5,7 +5,7 @@
 #
 # repositoryID is issued by Artifact Hub after the repo is registered in the UI
 # (Phase 6). owners[].email MUST match the Artifact Hub account email.
-repositoryID: ""            # TODO: fill from Artifact Hub after registration
+repositoryID: 00f095e0-2075-4e2e-bac7-4f7d2a3ec066
 owners:
   - name: TJ Zimmerman
     email: tj@tjzimmerman.com
