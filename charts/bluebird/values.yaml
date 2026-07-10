@@ -7,7 +7,8 @@ replicas: 1
 
 image:
   name: zimmertr/bluebird
-  tag: latest
+  # Empty = chart appVersion. The repo publishes SemVer tags only, no `latest`.
+  tag: ""
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
@@ -42,20 +43,12 @@ probes:
 # The matching block below becomes the workload's spec.strategy verbatim.
 strategy: RollingUpdate
 
-# Deployment spec.strategy.rollingUpdate, verbatim.
-rollingUpdate:
-  maxSurge: 25%
-  maxUnavailable: 25%
+# Deployment spec.strategy.rollingUpdate, verbatim. Empty = API defaults.
+rollingUpdate: {}
 
-# Rollout spec.strategy.canary, verbatim — any upstream field works here
-# (steps, analysis, stableMetadata, maxSurge, trafficRouting.managedRoutes,
-# virtualServices, ...). Strings are tpl-rendered so these defaults track the
-# release name. Overrides follow normal Helm coalescing: maps deep-merge,
-# lists replace wholesale, and `key: null` deletes a default — e.g. set
-# `trafficRouting: null` to run a canary without Istio. The default
-# trafficRouting expects ingress.enabled=true (it references the chart's
-# VirtualService). Referenced AnalysisTemplates are not rendered by this
-# chart — deploy them alongside it.
+# Rollout spec.strategy.canary, verbatim (tpl-rendered so the defaults track
+# the release name). Anything env-specific — trafficRouting, analysis,
+# experiments — is opt-in; see the README for an Istio example.
 canary:
   stableService: '{{ include "bluebird.fullname" . }}'
   canaryService: '{{ include "bluebird.fullname" . }}-canary'
@@ -65,31 +58,15 @@ canary:
   canaryMetadata:
     labels:
       role: canary
-  dynamicStableScale: true
-  trafficRouting:
-    istio:
-      virtualService:
-        name: '{{ include "bluebird.fullname" . }}'
-        routes:
-          - '{{ include "bluebird.fullname" . }}-stable'
   steps:
     - setWeight: 33
     - setWeight: 66
     - setWeight: 100
 
-# Rollout spec.strategy.blueGreen, verbatim (tpl-rendered, same rules).
+# Rollout spec.strategy.blueGreen, verbatim (tpl-rendered).
 blueGreen:
   activeService: '{{ include "bluebird.fullname" . }}'
   previewService: '{{ include "bluebird.fullname" . }}-canary'
-  autoPromotionEnabled: true
-
-# Deep-merged over the rendered Deployment/Rollout spec as the final word
-# (tpl-rendered) — the escape hatch that makes every workload field reachable
-# without a dedicated value: revisionHistoryLimit, minReadySeconds,
-# progressDeadlineSeconds, rollbackWindow, template.spec.initContainers,
-# template.spec.topologySpreadConstraints, ... Maps merge recursively; lists
-# replace wholesale.
-specOverrides: {}
 
 podAnnotations: {}
 podLabels: {}

@@ -55,10 +55,12 @@ app.kubernetes.io/part-of: bluebird
 {{- end -}}
 
 {{/*
-Container image reference. Tag defaults to "latest".
+Container image reference. Tag defaults to the chart appVersion — a published
+release tag. zimmertr/bluebird never publishes `latest`, so defaulting to it
+breaks pulls and Artifact Hub's security scanning.
 */}}
 {{- define "bluebird.image" -}}
-{{- $tag := default "latest" .Values.image.tag -}}
+{{- $tag := default .Chart.AppVersion .Values.image.tag -}}
 {{- printf "%s:%s" .Values.image.name $tag -}}
 {{- end -}}
 
@@ -83,70 +85,4 @@ from here.
 {{- else -}}
 {{- tpl (default $default .Values.canary.canaryService) . -}}
 {{- end -}}
-{{- end -}}
-
-{{/*
-Pod template shared by Deployment and Rollout. Rendered to YAML and parsed
-back into the spec dict so specOverrides can deep-merge into it.
-*/}}
-{{- define "bluebird.podTemplate" -}}
-metadata:
-  labels:
-    {{- include "bluebird.selectorLabels" . | nindent 4 }}
-    {{- with .Values.podLabels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-  {{- with .Values.podAnnotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-spec:
-  {{- with .Values.imagePullSecrets }}
-  imagePullSecrets:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-  {{- with .Values.podSecurityContext }}
-  securityContext:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-  containers:
-    - name: bluebird
-      image: {{ include "bluebird.image" . | quote }}
-      imagePullPolicy: {{ .Values.image.pullPolicy }}
-      ports:
-        - name: http
-          containerPort: {{ .Values.containerPort }}
-          protocol: TCP
-      {{- with .Values.extraEnv }}
-      env:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.securityContext }}
-      securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      livenessProbe:
-        {{- toYaml .Values.probes.liveness | nindent 8 }}
-      readinessProbe:
-        {{- toYaml .Values.probes.readiness | nindent 8 }}
-      {{- if .Values.probes.startup.enabled }}
-      startupProbe:
-        {{- toYaml (omit .Values.probes.startup "enabled") | nindent 8 }}
-      {{- end }}
-      {{- with .Values.resources }}
-      resources:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-  {{- with .Values.nodeSelector }}
-  nodeSelector:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-  {{- with .Values.tolerations }}
-  tolerations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-  {{- with .Values.affinity }}
-  affinity:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
 {{- end -}}
