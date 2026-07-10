@@ -69,3 +69,84 @@ a plain Deployment (RollingUpdate/Recreate).
 {{- define "bluebird.isRollout" -}}
 {{- or (eq .Values.strategy "Canary") (eq .Values.strategy "BlueGreen") -}}
 {{- end -}}
+
+{{/*
+Name of the Rollout's second Service (canaryService / previewService). The
+strategy blocks are verbatim values, so honor an override there; everything
+that must agree on this name (Service, VirtualService destination) derives it
+from here.
+*/}}
+{{- define "bluebird.secondaryServiceName" -}}
+{{- $default := printf "%s-canary" (include "bluebird.fullname" .) -}}
+{{- if eq .Values.strategy "BlueGreen" -}}
+{{- tpl (default $default .Values.blueGreen.previewService) . -}}
+{{- else -}}
+{{- tpl (default $default .Values.canary.canaryService) . -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Pod template shared by Deployment and Rollout. Rendered to YAML and parsed
+back into the spec dict so specOverrides can deep-merge into it.
+*/}}
+{{- define "bluebird.podTemplate" -}}
+metadata:
+  labels:
+    {{- include "bluebird.selectorLabels" . | nindent 4 }}
+    {{- with .Values.podLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.podAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.podSecurityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  containers:
+    - name: bluebird
+      image: {{ include "bluebird.image" . | quote }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      ports:
+        - name: http
+          containerPort: {{ .Values.containerPort }}
+          protocol: TCP
+      {{- with .Values.extraEnv }}
+      env:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      livenessProbe:
+        {{- toYaml .Values.probes.liveness | nindent 8 }}
+      readinessProbe:
+        {{- toYaml .Values.probes.readiness | nindent 8 }}
+      {{- if .Values.probes.startup.enabled }}
+      startupProbe:
+        {{- toYaml (omit .Values.probes.startup "enabled") | nindent 8 }}
+      {{- end }}
+      {{- with .Values.resources }}
+      resources:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- with .Values.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end -}}

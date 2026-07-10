@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "bluebird.fullname" . }}-canary
+  name: {{ include "bluebird.secondaryServiceName" . }}
   namespace: {{ include "bluebird.namespace" . }}
   labels:
     {{- include "bluebird.labels" . | nindent 4 }}
