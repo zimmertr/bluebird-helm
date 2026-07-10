@@ -55,10 +55,12 @@ app.kubernetes.io/part-of: bluebird
 {{- end -}}
 
 {{/*
-Container image reference. Tag defaults to "latest".
+Container image reference. Tag defaults to the chart appVersion — a published
+release tag. zimmertr/bluebird never publishes `latest`, so defaulting to it
+breaks pulls and Artifact Hub's security scanning.
 */}}
 {{- define "bluebird.image" -}}
-{{- $tag := default "latest" .Values.image.tag -}}
+{{- $tag := default .Chart.AppVersion .Values.image.tag -}}
 {{- printf "%s:%s" .Values.image.name $tag -}}
 {{- end -}}
 
@@ -68,4 +70,19 @@ a plain Deployment (RollingUpdate/Recreate).
 */}}
 {{- define "bluebird.isRollout" -}}
 {{- or (eq .Values.strategy "Canary") (eq .Values.strategy "BlueGreen") -}}
+{{- end -}}
+
+{{/*
+Name of the Rollout's second Service (canaryService / previewService). The
+strategy blocks are verbatim values, so honor an override there; everything
+that must agree on this name (Service, VirtualService destination) derives it
+from here.
+*/}}
+{{- define "bluebird.secondaryServiceName" -}}
+{{- $default := printf "%s-canary" (include "bluebird.fullname" .) -}}
+{{- if eq .Values.strategy "BlueGreen" -}}
+{{- tpl (default $default .Values.blueGreen.previewService) . -}}
+{{- else -}}
+{{- tpl (default $default .Values.canary.canaryService) . -}}
+{{- end -}}
 {{- end -}}

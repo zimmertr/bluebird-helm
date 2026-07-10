@@ -43,7 +43,7 @@ spec:
           weight: 100
         {{- if eq .Values.strategy "Canary" }}
         - destination:
-            host: {{ include "bluebird.fullname" . }}-canary
+            host: {{ include "bluebird.secondaryServiceName" . }}
             port:
               number: {{ .Values.service.port }}
           weight: 0

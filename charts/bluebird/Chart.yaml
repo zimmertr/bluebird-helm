@@ -5,7 +5,8 @@ type: application
 # version is overwritten at package time by CI (GitVersion). Kept here for local `helm template`.
 version: 0.1.0
 # appVersion tracks the default bluebird container image tag when none is supplied.
-appVersion: "0.3.2"
+# Must be a published zimmertr/bluebird tag — Artifact Hub scans the rendered image.
+appVersion: "0.14.13"
 home: https://bluebirdforecast.com
 icon: https://bluebirdforecast.com/icon.png
 sources:

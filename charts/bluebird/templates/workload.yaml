@@ -15,36 +15,16 @@ spec:
   selector:
     matchLabels:
       {{- include "bluebird.selectorLabels" . | nindent 6 }}
+  {{- /* canary/blueGreen values are the upstream spec.strategy.<kind> verbatim,
+         tpl-rendered so the shipped defaults can reference the release name. */}}
   {{- if eq .Values.strategy "Canary" }}
   strategy:
     canary:
-      stableService: {{ include "bluebird.fullname" . }}
-      canaryService: {{ include "bluebird.fullname" . }}-canary
-      stableMetadata:
-        labels:
-          role: stable
-      canaryMetadata:
-        labels:
-          role: canary
-      dynamicStableScale: {{ .Values.canary.dynamicStableScale }}
-      {{- with .Values.canary.steps }}
-      steps:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- if and .Values.canary.trafficRouting .Values.ingress.enabled }}
-      trafficRouting:
-        istio:
-          virtualService:
-            name: {{ include "bluebird.fullname" . }}
-            routes:
-              - {{ include "bluebird.fullname" . }}-stable
-      {{- end }}
+      {{- tpl (toYaml .Values.canary) . | nindent 6 }}
   {{- else if eq .Values.strategy "BlueGreen" }}
   strategy:
     blueGreen:
-      activeService: {{ include "bluebird.fullname" . }}
-      previewService: {{ include "bluebird.fullname" . }}-canary
-      autoPromotionEnabled: {{ .Values.blueGreen.autoPromotionEnabled }}
+      {{- tpl (toYaml .Values.blueGreen) . | nindent 6 }}
   {{- else }}
   strategy:
     type: {{ .Values.strategy }}

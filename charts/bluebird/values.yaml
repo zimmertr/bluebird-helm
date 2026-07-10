@@ -7,7 +7,8 @@ replicas: 1
 
 image:
   name: zimmertr/bluebird
-  tag: latest
+  # Empty = chart appVersion. The repo publishes SemVer tags only, no `latest`.
+  tag: ""
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
@@ -39,19 +40,32 @@ probes:
     periodSeconds: 5
 
 # RollingUpdate | Recreate -> Deployment. Canary | BlueGreen -> Argo Rollout.
+# The matching block below (if any) becomes the workload's spec.strategy
+# verbatim. An optional `rollingUpdate` map is honored the same way
+# (maxSurge/maxUnavailable); unset, the API defaults apply.
 strategy: RollingUpdate
-rollingUpdate:
-  maxSurge: 25%
-  maxUnavailable: 25%
+
+# Rollout spec.strategy.canary, verbatim (tpl-rendered so the defaults track
+# the release name). Anything env-specific — trafficRouting, analysis,
+# experiments — is opt-in; see the README for an Istio example.
 canary:
-  dynamicStableScale: true
-  trafficRouting: true
+  stableService: '{{ include "bluebird.fullname" . }}'
+  canaryService: '{{ include "bluebird.fullname" . }}-canary'
+  stableMetadata:
+    labels:
+      role: stable
+  canaryMetadata:
+    labels:
+      role: canary
   steps:
     - setWeight: 33
     - setWeight: 66
     - setWeight: 100
+
+# Rollout spec.strategy.blueGreen, verbatim (tpl-rendered).
 blueGreen:
-  autoPromotionEnabled: true
+  activeService: '{{ include "bluebird.fullname" . }}'
+  previewService: '{{ include "bluebird.fullname" . }}-canary'
 
 podAnnotations: {}
 podLabels: {}

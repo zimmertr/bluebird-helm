@@ -23,7 +23,7 @@ namespace: bluebird-system
 helmCharts:
   - name: bluebird-helm
     repo: oci://registry-1.docker.io/zimmertr
-    version: 0.1.0
+    version: 0.2.0
     releaseName: bluebird
     valuesFile: values.yml
 ```
@@ -34,7 +34,7 @@ helmCharts:
 sources:
   - repoURL: oci://registry-1.docker.io/zimmertr/bluebird-helm
     chart: bluebird-helm
-    targetRevision: 0.1.0
+    targetRevision: 0.2.0
     helm:
       releaseName: bluebird-pr-{{ .number }}
       valueFiles: [$values/public/bluebird/values.yml]
@@ -48,14 +48,32 @@ sources:
 
 ## Deployment strategy
 
-`strategy` selects the workload kind:
+`strategy` selects the workload kind; the matching values block (`rollingUpdate` / `canary` / `blueGreen`) becomes the workload's `spec.strategy` **verbatim**:
 
-| `strategy` | Rendered kind | Notes |
+| `strategy` | Rendered kind | Strategy block |
 |---|---|---|
-| `RollingUpdate` (default) | `Deployment` | Honors `rollingUpdate.maxSurge`/`maxUnavailable` |
-| `Recreate` | `Deployment` | |
-| `Canary` | Argo `Rollout` | Adds a `-canary` Service; uses Istio traffic routing when `canary.trafficRouting` **and** `ingress.enabled` |
-| `BlueGreen` | Argo `Rollout` | Adds a `-canary` Service as the blue-green preview |
+| `RollingUpdate` (default) | `Deployment` | `rollingUpdate` (optional; unset = API defaults) |
+| `Recreate` | `Deployment` | — |
+| `Canary` | Argo `Rollout` | `canary` — the full [Rollout canary spec](https://argo-rollouts.readthedocs.io/en/stable/features/specification/) |
+| `BlueGreen` | Argo `Rollout` | `blueGreen` — the full Rollout blue-green spec |
+
+The `canary` / `blueGreen` blocks are tpl-rendered, so the shipped defaults (service names, `role:` pod metadata) track the release name and per-PR preview releases keep working; overrides follow normal Helm coalescing (maps deep-merge, lists like `steps` replace wholesale). `Canary`/`BlueGreen` also render a second `-canary` Service whose name follows `canaryService`/`previewService`.
+
+The defaults deliberately stop at what works on any cluster: a bare `strategy: Canary` progresses by ReplicaSet-ratio weighting. Everything environment-specific is opt-in through the same verbatim block — e.g. Istio traffic shifting against the chart's VirtualService (requires `ingress.enabled: true`):
+
+```yaml
+canary:
+  dynamicStableScale: true
+  trafficRouting:
+    istio:
+      virtualService:
+        name: '{{ include "bluebird.fullname" . }}'
+        routes: ['{{ include "bluebird.fullname" . }}-stable']
+```
+
+`analysis`, `experiment` steps, `managedRoutes`, plural `virtualServices`, `pingPong`, ... — any upstream field works the same way. Referenced `AnalysisTemplate`s are not rendered by this chart; deploy them alongside it.
+
+> **Breaking change vs 0.1.x:** `canary.trafficRouting` is no longer a boolean (nor a default) — supply the verbatim `trafficRouting` map above to keep the previous `true` behavior. `canary.dynamicStableScale` is likewise no longer defaulted on. The default image tag is now the chart `appVersion` instead of `latest`, which the image repo never publishes.
 
 ## Values
 
@@ -66,7 +84,7 @@ sources:
 | `commonLabels` / `commonAnnotations` | `{}` | Merged onto every resource |
 | `replicas` | `1` | Replica count |
 | `image.name` | `zimmertr/bluebird` | Image repository |
-| `image.tag` | `latest` | Image tag |
+| `image.tag` | `""` → chart `appVersion` | Image tag (the repo publishes SemVer only, no `latest`) |
 | `image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `imagePullSecrets` | `[]` | Image pull secrets |
 | `containerPort` | `8000` | Container port |
@@ -77,12 +95,10 @@ sources:
 | `probes.liveness` / `probes.readiness` | `GET / :8000` | Probe definitions |
 | `probes.startup.enabled` | `true` | Enable the startup probe |
 | `probes.startup` | `GET / :8000`, `failureThreshold: 30` | Startup probe definition |
-| `strategy` | `RollingUpdate` | `RollingUpdate` \| `Recreate` \| `Canary` \| `BlueGreen` |
-| `rollingUpdate` | `maxSurge: 25%`, `maxUnavailable: 25%` | Applies when `strategy=RollingUpdate` |
-| `canary.dynamicStableScale` | `true` | Scale down stable as canary scales up |
-| `canary.trafficRouting` | `true` | Use Istio VirtualService weighting (needs `ingress.enabled`) |
-| `canary.steps` | `33 → 66 → 100` | Canary weight steps |
-| `blueGreen.autoPromotionEnabled` | `true` | Auto-promote the preview |
+| `strategy` | `RollingUpdate` | `RollingUpdate` \| `Recreate` \| `Canary` \| `BlueGreen` — selects the workload kind and which block below applies |
+| `rollingUpdate` | *unset* | Optional Deployment `spec.strategy.rollingUpdate`, verbatim (`maxSurge`/`maxUnavailable`); unset = API defaults |
+| `canary` | services, `role:` pod metadata, steps `33 → 66 → 100` | Rollout `spec.strategy.canary`, verbatim + tpl-rendered — any upstream field works (`trafficRouting`, `analysis`, `stableMetadata`, ...) |
+| `blueGreen` | services | Rollout `spec.strategy.blueGreen`, verbatim + tpl-rendered |
 | `podAnnotations` / `podLabels` | `{}` | Extra pod metadata |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` / `[]` / `{}` | Scheduling |
 | `service.type` | `ClusterIP` | Service type |
