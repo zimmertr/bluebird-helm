@@ -52,7 +52,7 @@ sources:
 
 | `strategy` | Rendered kind | Strategy block |
 |---|---|---|
-| `RollingUpdate` (default) | `Deployment` | `rollingUpdate` (empty = API defaults) |
+| `RollingUpdate` (default) | `Deployment` | `rollingUpdate` (optional; unset = API defaults) |
 | `Recreate` | `Deployment` | — |
 | `Canary` | Argo `Rollout` | `canary` — the full [Rollout canary spec](https://argo-rollouts.readthedocs.io/en/stable/features/specification/) |
 | `BlueGreen` | Argo `Rollout` | `blueGreen` — the full Rollout blue-green spec |
@@ -96,7 +96,7 @@ canary:
 | `probes.startup.enabled` | `true` | Enable the startup probe |
 | `probes.startup` | `GET / :8000`, `failureThreshold: 30` | Startup probe definition |
 | `strategy` | `RollingUpdate` | `RollingUpdate` \| `Recreate` \| `Canary` \| `BlueGreen` — selects the workload kind and which block below applies |
-| `rollingUpdate` | `{}` | Deployment `spec.strategy.rollingUpdate`, verbatim; empty = API defaults (25% / 25%) |
+| `rollingUpdate` | *unset* | Optional Deployment `spec.strategy.rollingUpdate`, verbatim (`maxSurge`/`maxUnavailable`); unset = API defaults |
 | `canary` | services, `role:` pod metadata, steps `33 → 66 → 100` | Rollout `spec.strategy.canary`, verbatim + tpl-rendered — any upstream field works (`trafficRouting`, `analysis`, `stableMetadata`, ...) |
 | `blueGreen` | services | Rollout `spec.strategy.blueGreen`, verbatim + tpl-rendered |
 | `podAnnotations` / `podLabels` | `{}` | Extra pod metadata |

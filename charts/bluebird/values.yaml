@@ -40,11 +40,10 @@ probes:
     periodSeconds: 5
 
 # RollingUpdate | Recreate -> Deployment. Canary | BlueGreen -> Argo Rollout.
-# The matching block below becomes the workload's spec.strategy verbatim.
+# The matching block below (if any) becomes the workload's spec.strategy
+# verbatim. An optional `rollingUpdate` map is honored the same way
+# (maxSurge/maxUnavailable); unset, the API defaults apply.
 strategy: RollingUpdate
-
-# Deployment spec.strategy.rollingUpdate, verbatim. Empty = API defaults.
-rollingUpdate: {}
 
 # Rollout spec.strategy.canary, verbatim (tpl-rendered so the defaults track
 # the release name). Anything env-specific — trafficRouting, analysis,
