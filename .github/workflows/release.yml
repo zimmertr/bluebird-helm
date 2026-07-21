@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write  # git tag + GitHub release
+    outputs:
+      semVer: ${{ steps.gitversion.outputs.semVer }}
+      published: ${{ steps.exists.outputs.exists == 'false' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,15 +47,34 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # appVersion is the chart's default image tag, so it must name a *published*
+      # zimmertr/bluebird tag or Artifact Hub's security scan fails (and default
+      # pulls break). Resolve it from the latest bluebird release at package time
+      # instead of hand-maintaining a value in Chart.yaml that goes stale.
+      - name: Resolve latest bluebird app version
+        id: appver
+        if: steps.exists.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APP_VER="$(gh api repos/zimmertr/bluebird/releases/latest -q .tag_name 2>/dev/null | sed 's/^v//')"
+          echo "appVersion=${APP_VER}" >> "$GITHUB_OUTPUT"
+          echo "Resolved appVersion: ${APP_VER:-<none; keeping Chart.yaml default>}"
+
       - name: Package & push chart
         if: steps.exists.outputs.exists == 'false'
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          APP_VER: ${{ steps.appver.outputs.appVersion }}
         run: |
           VER="${{ steps.gitversion.outputs.semVer }}"
           echo "$DOCKERHUB_TOKEN" | helm registry login registry-1.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
-          helm package charts/bluebird --version "$VER"
+          # Only override appVersion when we resolved one, so a missing release
+          # falls back to the Chart.yaml default rather than an empty tag.
+          APPFLAG=""
+          [ -n "$APP_VER" ] && APPFLAG="--app-version $APP_VER"
+          helm package charts/bluebird --version "$VER" $APPFLAG
           helm push "bluebird-helm-${VER}.tgz" oci://registry-1.docker.io/zimmertr
 
       - name: Tag & release
@@ -70,3 +92,55 @@ jobs:
       # Artifact Hub ownership metadata (artifacthub-repo.yml) is pushed once,
       # out-of-band, to the OCI repo's "artifacthub.io" tag. It only changes when
       # repositoryID/owners change, so it isn't worth a per-release step.
+
+  # On a new chart release, open two separate PRs against Kubernetes-Manifests:
+  # one moving the per-PR previews onto the new chart, one moving the stable app.
+  # Kept as PRs (not direct commits) so a chart bump reaching prod gets a review.
+  # Requires a GH_PAT secret with contents+pull-requests write on
+  # zimmertr/Kubernetes-Manifests (same PAT the bluebird app release uses).
+  bump-manifests:
+    name: Bump Kubernetes-Manifests
+    runs-on: ubuntu-latest
+    needs: publish
+    if: needs.publish.outputs.published == 'true'
+    env:
+      VER: ${{ needs.publish.outputs.semVer }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+    steps:
+      - name: Clone Kubernetes-Manifests
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/zimmertr/Kubernetes-Manifests.git" km
+          cd km
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: PR — point PR previews at the new chart
+        working-directory: km
+        run: |
+          BR="chore/bluebird-preview-chart-${VER}"
+          git checkout -B "$BR" origin/main
+          # Targeted sed (not yq) so the diff is one line — yq would reindent the file.
+          sed -i -E "s|^([[:space:]]*)targetRevision:.*|\1targetRevision: ${VER}|" public/bluebird-pr/applicationset.yml
+          if git diff --quiet; then echo "preview already at ${VER}"; exit 0; fi
+          git commit -am "chore: bump bluebird preview chart to ${VER}"
+          git push -f origin "$BR"
+          gh pr create --base main --head "$BR" \
+            --title "chore: bump bluebird preview chart to ${VER}" \
+            --body "Automated by the bluebird-helm ${VER} release. Points the per-PR preview ApplicationSet at the new chart." \
+            || echo "PR already open for ${BR}"
+
+      - name: PR — roll the stable app onto the new chart
+        working-directory: km
+        run: |
+          BR="chore/bluebird-stable-chart-${VER}"
+          git checkout -B "$BR" origin/main
+          # The chart's helmCharts version is the only `version:` key in this file
+          # (apiVersion doesn't match). Targeted sed keeps the diff to one line.
+          sed -i -E "s|^([[:space:]]*)version:[[:space:]].*|\1version: ${VER}|" public/bluebird/kustomization.yml
+          if git diff --quiet; then echo "stable already at ${VER}"; exit 0; fi
+          git commit -am "chore: bump bluebird stable chart to ${VER}"
+          git push -f origin "$BR"
+          gh pr create --base main --head "$BR" \
+            --title "chore: bump bluebird stable chart to ${VER}" \
+            --body "Automated by the bluebird-helm ${VER} release. Rolls the stable app onto the new chart (triggers the canary rollout)." \
+            || echo "PR already open for ${BR}"
