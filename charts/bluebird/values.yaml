@@ -45,6 +45,16 @@ probes:
 # (maxSurge/maxUnavailable); unset, the API defaults apply.
 strategy: RollingUpdate
 
+# Optional revisionHistoryLimit (Deployment and Rollout). Upstream default: 10.
+# Limits the number of old ReplicaSets retained.
+# revisionHistoryLimit: 1
+
+# Optional analysis (Rollout only). Upstream defaults: successfulRunHistoryLimit=5,
+# unsuccessfulRunHistoryLimit=5. Set when using canary/blueGreen with analysis.
+# analysis:
+#   successfulRunHistoryLimit: 1
+#   unsuccessfulRunHistoryLimit: 2
+
 # Rollout spec.strategy.canary, verbatim (tpl-rendered so the defaults track
 # the release name). Anything env-specific — trafficRouting, analysis,
 # experiments — is opt-in; see the README for an Istio example.

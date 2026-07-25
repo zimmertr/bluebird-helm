@@ -12,6 +12,9 @@ metadata:
   {{- end }}
 spec:
   replicas: {{ .Values.replicas }}
+  {{- if ne .Values.revisionHistoryLimit nil }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "bluebird.selectorLabels" . | nindent 6 }}
@@ -32,6 +35,10 @@ spec:
     rollingUpdate:
       {{- toYaml .Values.rollingUpdate | nindent 6 }}
     {{- end }}
+  {{- end }}
+  {{- if and $isRollout .Values.analysis }}
+  analysis:
+    {{- toYaml .Values.analysis | nindent 4 }}
   {{- end }}
   template:
     metadata:
