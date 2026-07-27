@@ -93,9 +93,19 @@ jobs:
       # out-of-band, to the OCI repo's "artifacthub.io" tag. It only changes when
       # repositoryID/owners change, so it isn't worth a per-release step.
 
-  # On a new chart release, open two separate PRs against Kubernetes-Manifests:
-  # one moving the per-PR previews onto the new chart, one moving the stable app.
-  # Kept as PRs (not direct commits) so a chart bump reaching prod gets a review.
+  # On a new chart release, move Kubernetes-Manifests onto the new chart. The two
+  # consumers are treated differently on purpose:
+  #
+  #   - preview (per-PR ephemeral envs) — direct commit to main. Nothing reaching
+  #     prod, so a review gate buys nothing. Mirrors how the bluebird app release
+  #     commits its image tag straight to this repo.
+  #   - stable (prod) — a PR, so a chart change reaching prod gets a review.
+  #
+  # The stable PR uses a FIXED branch that is force-pushed and edited in place, so
+  # rapid chart releases collapse into a single up-to-date PR. Version-suffixed
+  # branch names used to be the norm here and stranded 6 open PRs across three
+  # chart releases while prod sat on an old chart.
+  #
   # Requires a GH_PAT secret with contents+pull-requests write on
   # zimmertr/Kubernetes-Manifests (same PAT the bluebird app release uses).
   bump-manifests:
@@ -114,25 +124,24 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: PR — point PR previews at the new chart
+      - name: Point PR previews at the new chart
         working-directory: km
         run: |
-          BR="chore/bluebird-preview-chart-${VER}"
-          git checkout -B "$BR" origin/main
+          git checkout main
           # Targeted sed (not yq) so the diff is one line — yq would reindent the file.
           sed -i -E "s|^([[:space:]]*)targetRevision:.*|\1targetRevision: ${VER}|" public/bluebird-pr/applicationset.yml
           if git diff --quiet; then echo "preview already at ${VER}"; exit 0; fi
           git commit -am "chore: bump bluebird preview chart to ${VER}"
-          git push -f origin "$BR"
-          gh pr create --base main --head "$BR" \
-            --title "chore: bump bluebird preview chart to ${VER}" \
-            --body "Automated by the bluebird-helm ${VER} release. Points the per-PR preview ApplicationSet at the new chart." \
-            || echo "PR already open for ${BR}"
+          git push
 
       - name: PR — roll the stable app onto the new chart
         working-directory: km
         run: |
-          BR="chore/bluebird-stable-chart-${VER}"
+          # Fixed branch, no ${VER} suffix: a version-suffixed name makes every
+          # release open a brand-new PR instead of advancing the existing one.
+          BR="chore/bluebird-stable-chart"
+          # Fresh off main every time, so the branch is always exactly one commit
+          # carrying the newest chart version, never a stack of prior bumps.
           git checkout -B "$BR" origin/main
           # The chart's helmCharts version is the only `version:` key in this file
           # (apiVersion doesn't match). Targeted sed keeps the diff to one line.
@@ -140,7 +149,16 @@ jobs:
           if git diff --quiet; then echo "stable already at ${VER}"; exit 0; fi
           git commit -am "chore: bump bluebird stable chart to ${VER}"
           git push -f origin "$BR"
-          gh pr create --base main --head "$BR" \
-            --title "chore: bump bluebird stable chart to ${VER}" \
-            --body "Automated by the bluebird-helm ${VER} release. Rolls the stable app onto the new chart (triggers the canary rollout)." \
-            || echo "PR already open for ${BR}"
+
+          TITLE="chore: bump bluebird stable chart to ${VER}"
+          BODY="Automated by the bluebird-helm ${VER} release. Rolls the stable app onto the new chart (triggers the canary rollout)."
+          PR_NUM="$(gh pr list --head "$BR" --state open --json number -q '.[0].number')"
+          if [ -n "$PR_NUM" ]; then
+            # The force-push already advanced the branch. Refresh the title and
+            # body too: both name the version, so an open PR carried across
+            # several chart releases would otherwise advertise a superseded one.
+            gh pr edit "$PR_NUM" --title "$TITLE" --body "$BODY"
+            echo "Advanced existing PR #${PR_NUM} to ${VER}."
+          else
+            gh pr create --base main --head "$BR" --title "$TITLE" --body "$BODY"
+          fi
