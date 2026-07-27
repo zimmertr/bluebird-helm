@@ -103,9 +103,13 @@ jobs:
 
   # On a new chart release, move Kubernetes-Manifests onto the new chart. Both
   # consumers — preview (per-PR ephemeral envs) and stable (prod) — land through
-  # self-merging PRs, because Kubernetes-Manifests forbids direct commits to main.
-  # Its "Validate manifests" check renders the affected kustomization, so a chart
+  # PRs, because Kubernetes-Manifests forbids direct commits to main. Its
+  # "Validate manifests" check renders the affected kustomization, so a chart
   # version that doesn't resolve fails the PR instead of failing an Argo sync.
+  #
+  # Preview always self-merges (nothing it touches reaches prod). Stable only
+  # self-merges when the chart change is provably inert; otherwise it waits for a
+  # human. See the classifier in that step.
   #
   # Each consumer gets its own FIXED branch, force-pushed and edited in place, so
   # rapid chart releases collapse into a single up-to-date PR per consumer.
@@ -155,39 +159,193 @@ jobs:
           fi
           gh pr merge --auto --squash "$BR" || gh pr merge --squash "$BR"
 
+      # Unlike the preview bump, this one rolls *prod* onto a new chart, so it
+      # only self-merges when the chart change is provably inert (see the
+      # classifier below). Anything that touches templates or values.yml waits
+      # for a human, because a breaking chart change can require a matching edit
+      # to Kubernetes-Manifests/public/bluebird/values.yml that this job cannot
+      # make — auto-merging that class ships a broken render to prod.
       - name: PR — roll the stable app onto the new chart
         working-directory: km
         run: |
           # Fixed branch, no ${VER} suffix: a version-suffixed name makes every
           # release open a brand-new PR instead of advancing the existing one.
           BR="chore/bluebird-stable-chart"
+          COMPARE_JSON="${RUNNER_TEMP:-/tmp}/bluebird-chart-compare.json"
+
+          # ---------------------------------------------------------------
+          # 0. Never clobber hand-added commits on the branch.
+          # A held PR invites exactly that: someone pushes the matching
+          # values.yml edit here, and the next release's force-push destroys it.
+          # Match the bot address EXACTLY — excluding the whole @users.noreply
+          # domain would also swallow commits made under a human's GitHub
+          # noreply address and silently classify them as the bot's.
+          # ---------------------------------------------------------------
+          git fetch -q origin "$BR" || true
+          HUMAN=""
+          if git rev-parse --verify -q "origin/$BR" >/dev/null; then
+            # "^origin/main" asks the right question: does the branch carry a
+            # non-bot commit that main doesn't already have?
+            HUMAN="$(git log --format='%ae' "origin/$BR" "^origin/main" \
+                     | grep -vFx 'github-actions[bot]@users.noreply.github.com' || true)"
+          fi
+          if [ -n "$HUMAN" ]; then
+            echo "Branch $BR carries non-bot commits; leaving it untouched."
+            # Comment rather than fail: a hold that stops refreshing is otherwise
+            # indistinguishable from the PR having been stranded. The marker
+            # embeds ${VER} so a newer chart stays loud while a re-run stays quiet.
+            HELD_PR="$(gh pr list --head "$BR" --state open --json number -q '.[0].number')"
+            if [ -z "$HELD_PR" ]; then
+              echo "No open PR on $BR to comment on; skipping."
+              exit 0
+            fi
+            MARKER="<!-- bluebird-stable-chart-held: ${VER} -->"
+            if gh api "repos/zimmertr/Kubernetes-Manifests/issues/${HELD_PR}/comments" --paginate \
+                --jq '.[].body' | grep -qF "$MARKER"; then
+              exit 0
+            fi
+            BODY=$(printf '%s\n' \
+              "$MARKER" \
+              "### ⏸️ Chart \`${VER}\` released, branch left alone" \
+              "" \
+              "This branch has commits that aren't from the release bot, so the automation did **not** force-push over it. It still points at the chart version it had before." \
+              "" \
+              "Merge or close this PR, then re-run \`Release Chart\` in \`bluebird-helm\` (or cut another chart release) to pick up \`${VER}\`.")
+            gh api -X POST "repos/zimmertr/Kubernetes-Manifests/issues/${HELD_PR}/comments" -f body="$BODY" >/dev/null
+            exit 0
+          fi
+
+          # ---------------------------------------------------------------
+          # 1. Read the deployed chart version, then bump it.
           # Fresh off main every time, so the branch is always exactly one commit
           # carrying the newest chart version, never a stack of prior bumps.
+          # ---------------------------------------------------------------
           git checkout -B "$BR" origin/main
-          # The chart's helmCharts version is the only `version:` key in this file
-          # (apiVersion doesn't match). Targeted sed keeps the diff to one line.
+          # The chart's helmCharts version is the only indented `version:` key in
+          # this file (unindented apiVersion doesn't match).
+          OLD="$(grep -E '^[[:space:]]+version:' public/bluebird/kustomization.yml | head -1 | awk '{print $2}')"
+          # Targeted sed (not yq) so the diff is one line — yq would reindent the file.
           sed -i -E "s|^([[:space:]]*)version:[[:space:]].*|\1version: ${VER}|" public/bluebird/kustomization.yml
           if git diff --quiet; then echo "stable already at ${VER}"; exit 0; fi
+
+          # ---------------------------------------------------------------
+          # 2. Classify the change: inert (self-merges) or needs review.
+          #
+          # The base is the *deployed* version, not the previous release, because
+          # the PR's net effect on prod is OLD -> VER. A template change anywhere
+          # in that range keeps the PR held even if the newest release alone was
+          # appVersion-only.
+          #
+          # appVersion-only is safe to self-merge: `bluebird.labels` (the only
+          # helper carrying app.kubernetes.io/version) is applied to object
+          # metadata, while the pod template uses `bluebird.selectorLabels`, which
+          # omits it — so the pod spec can't change and Argo Rollouts has nothing
+          # to canary. `bluebird.image` does default to .Chart.AppVersion, but the
+          # kustomization's `images:` transformer pins an explicit newTag that wins
+          # regardless. Verified by rendering public/bluebird against charts 0.4.7
+          # (appVersion 0.29.3) and 0.4.8 (0.29.4): the pod template is byte-identical
+          # and the image stays newTag's 0.29.4. Net prod effect is two cosmetic
+          # object-metadata labels, app.kubernetes.io/version and helm.sh/chart.
+          #
+          # These run: blocks execute under `bash -e` WITHOUT pipefail, so a
+          # failing command mid-pipeline is silent. Capture the compare call's
+          # exit status explicitly — never `|| true`. "API failed" and "no chart
+          # files changed" are both the empty string but opposite verdicts, and
+          # conflating them auto-merges every PR that should have been held.
+          # ---------------------------------------------------------------
+          FILES=""
+          if [ -z "$OLD" ]; then
+            CLASS=review
+            REASON="could not read the deployed chart version from public/bluebird/kustomization.yml — holding rather than guessing"
+            echo "::warning::$REASON"
+          elif ! gh api "repos/zimmertr/bluebird-helm/compare/v${OLD}...v${VER}" > "$COMPARE_JSON" 2>/dev/null \
+               || ! jq -e 'has("files")' "$COMPARE_JSON" >/dev/null 2>&1; then
+            # The `has("files")` check matters: without it a malformed response
+            # makes the jq below emit nothing, which reads as "no chart files
+            # changed" and auto-merges.
+            CLASS=review
+            REASON="could not compare \`v${OLD}...v${VER}\` in bluebird-helm (missing tag or API error), so the change can't be shown to be inert"
+            echo "::warning::$REASON"
+          else
+            FILES="$(jq -r '.files[].filename' "$COMPARE_JSON" | grep '^charts/' || true)"
+            # `.patch` is absent on very large diffs; `// ""` then falls through
+            # to review, which is the safe direction.
+            PATCH="$(jq -r '.files[] | select(.filename == "charts/bluebird/Chart.yaml") | .patch // ""' "$COMPARE_JSON")"
+            if [ -z "$FILES" ]; then
+              CLASS=inert
+              REASON="no files under \`charts/\` changed between \`v${OLD}\` and \`v${VER}\`"
+            elif [ "$FILES" = "charts/bluebird/Chart.yaml" ] && [ -n "$PATCH" ] \
+                 && ! printf '%s\n' "$PATCH" | grep -E '^[+-]' | grep -qvE '^[+-]appVersion:'; then
+              CLASS=inert
+              REASON="only \`appVersion\` changed in \`charts/bluebird/Chart.yaml\`, which can't alter the pod template"
+            else
+              CLASS=review
+              REASON="the chart itself changed between \`v${OLD}\` and \`v${VER}\`"
+            fi
+          fi
+          echo "Classified v${OLD}...v${VER} as ${CLASS}: ${REASON}"
+
           git commit -am "chore: bump bluebird stable chart to ${VER}"
           git push -f origin "$BR"
 
-          TITLE="chore: bump bluebird stable chart to ${VER}"
-          BODY="Automated by the bluebird-helm ${VER} release. Rolls the stable app onto the new chart (triggers the canary rollout)."
+          # ---------------------------------------------------------------
+          # 3. Raise or advance the PR, carrying the verdict and its evidence.
+          # ---------------------------------------------------------------
+          if [ "$CLASS" = inert ]; then
+            TITLE="chore: bump bluebird stable chart to ${VER}"
+            VERDICT="### 🤖 Auto-merge armed"
+            NOTE="No human review needed: ${REASON}. This lands itself once \`Validate manifests\` passes."
+          else
+            TITLE="chore: bump bluebird stable chart to ${VER} (review required)"
+            VERDICT="### ⏸️ Held for review"
+            NOTE="Auto-merge is **not** armed: ${REASON}. Check whether the new chart needs a matching edit to \`public/bluebird/values.yml\` in this repo (a template or values change can break the render), then merge by hand."
+          fi
+          BODY=$(printf '%s\n' \
+            "Automated by the bluebird-helm ${VER} release. Rolls prod from chart \`${OLD:-unknown}\` onto \`${VER}\`." \
+            "" \
+            "$VERDICT" \
+            "" \
+            "$NOTE" \
+            "" \
+            "Chart files changed between \`v${OLD}\` and \`v${VER}\`:" \
+            "" \
+            '```' \
+            "${FILES:-(none)}" \
+            '```' \
+            "" \
+            "https://github.com/zimmertr/bluebird-helm/compare/v${OLD}...v${VER}")
+
           PR_NUM="$(gh pr list --head "$BR" --state open --json number -q '.[0].number')"
+          if [ -z "$PR_NUM" ]; then
+            # A PR closed without merging leaves the branch behind, and `gh pr
+            # create` on such a branch fails rather than opening a second one.
+            # Reopen it instead of stranding the branch silently. (MERGED PRs
+            # can't be reopened, hence the CLOSED filter.)
+            PR_NUM="$(gh pr list --head "$BR" --state closed --json number,state \
+                      -q 'map(select(.state == "CLOSED")) | .[0].number')"
+            # `[ ... ] && cmd` would abort the whole step under `set -e` when the
+            # test is false, since the && list is the complete command.
+            if [ -n "$PR_NUM" ]; then gh pr reopen "$PR_NUM"; fi
+          fi
           if [ -n "$PR_NUM" ]; then
             # The force-push already advanced the branch. Refresh the title and
-            # body too: both name the version, so an open PR carried across
-            # several chart releases would otherwise advertise a superseded one.
+            # body too: both name the version and the verdict, so an open PR
+            # carried across several chart releases would otherwise advertise a
+            # superseded one.
             gh pr edit "$PR_NUM" --title "$TITLE" --body "$BODY"
             echo "Advanced existing PR #${PR_NUM} to ${VER}."
           else
             gh pr create --base main --head "$BR" --title "$TITLE" --body "$BODY"
           fi
 
-          # Arm auto-merge so the bump lands without a human. This step used to
-          # stop at PR creation, which left prod chart bumps waiting on someone
-          # noticing the PR. Re-armed unconditionally because GitHub disables
-          # auto-merge on every force-push of the head branch; the || fallback
-          # covers the window where the required check has already gone green,
-          # which makes the PR "clean" and rejects --auto outright.
-          gh pr merge --auto --squash "$BR" || gh pr merge --squash "$BR"
+          if [ "$CLASS" = inert ]; then
+            # Re-armed unconditionally because GitHub disables auto-merge on every
+            # force-push of the head branch; the || fallback covers the window
+            # where the required check has already gone green, which makes the PR
+            # "clean" and rejects --auto outright.
+            gh pr merge --auto --squash "$BR" || gh pr merge --squash "$BR"
+          else
+            # A previous release may have armed auto-merge on this same PR. Disarm
+            # explicitly rather than trusting the force-push to have done it.
+            gh pr merge --disable-auto "$BR" 2>/dev/null || true
+          fi
