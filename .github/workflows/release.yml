@@ -10,6 +10,14 @@ on:
       - '.github/workflows/release.yml'
   workflow_dispatch:
 
+# Serialize chart releases. bump-manifests force-pushes fixed branches in
+# Kubernetes-Manifests, so two concurrent runs would clobber each other's
+# branch and leave the surviving PR pinned to whichever version pushed last.
+# cancel-in-progress stays false so every chart release still lands, just serially.
+concurrency:
+  group: chart-release
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -93,18 +101,19 @@ jobs:
       # out-of-band, to the OCI repo's "artifacthub.io" tag. It only changes when
       # repositoryID/owners change, so it isn't worth a per-release step.
 
-  # On a new chart release, move Kubernetes-Manifests onto the new chart. The two
-  # consumers are treated differently on purpose:
+  # On a new chart release, move Kubernetes-Manifests onto the new chart. Both
+  # consumers — preview (per-PR ephemeral envs) and stable (prod) — land through
+  # self-merging PRs, because Kubernetes-Manifests forbids direct commits to main.
+  # Its "Validate manifests" check renders the affected kustomization, so a chart
+  # version that doesn't resolve fails the PR instead of failing an Argo sync.
   #
-  #   - preview (per-PR ephemeral envs) — direct commit to main. Nothing reaching
-  #     prod, so a review gate buys nothing. Mirrors how the bluebird app release
-  #     commits its image tag straight to this repo.
-  #   - stable (prod) — a PR, so a chart change reaching prod gets a review.
+  # Each consumer gets its own FIXED branch, force-pushed and edited in place, so
+  # rapid chart releases collapse into a single up-to-date PR per consumer.
+  # Version-suffixed branch names used to be the norm here and stranded 6 open PRs
+  # across three chart releases while prod sat on an old chart.
   #
-  # The stable PR uses a FIXED branch that is force-pushed and edited in place, so
-  # rapid chart releases collapse into a single up-to-date PR. Version-suffixed
-  # branch names used to be the norm here and stranded 6 open PRs across three
-  # chart releases while prod sat on an old chart.
+  # Separate branches (not one PR touching both files) so a preview bump is never
+  # blocked behind a prod change, and either can be closed independently.
   #
   # Requires a GH_PAT secret with contents+pull-requests write on
   # zimmertr/Kubernetes-Manifests (same PAT the bluebird app release uses).
@@ -124,15 +133,27 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Point PR previews at the new chart
+      - name: PR — point PR previews at the new chart
         working-directory: km
         run: |
-          git checkout main
+          BR="chore/bluebird-preview-chart"
+          git checkout -B "$BR" origin/main
           # Targeted sed (not yq) so the diff is one line — yq would reindent the file.
           sed -i -E "s|^([[:space:]]*)targetRevision:.*|\1targetRevision: ${VER}|" public/bluebird-pr/applicationset.yml
           if git diff --quiet; then echo "preview already at ${VER}"; exit 0; fi
           git commit -am "chore: bump bluebird preview chart to ${VER}"
-          git push
+          git push -f origin "$BR"
+
+          TITLE="chore: bump bluebird preview chart to ${VER}"
+          BODY="Automated by the bluebird-helm ${VER} release. Points the per-PR preview ApplicationSet at the new chart."
+          PR_NUM="$(gh pr list --head "$BR" --state open --json number -q '.[0].number')"
+          if [ -n "$PR_NUM" ]; then
+            gh pr edit "$PR_NUM" --title "$TITLE" --body "$BODY"
+            echo "Advanced existing PR #${PR_NUM} to ${VER}."
+          else
+            gh pr create --base main --head "$BR" --title "$TITLE" --body "$BODY"
+          fi
+          gh pr merge --auto --squash "$BR" || gh pr merge --squash "$BR"
 
       - name: PR — roll the stable app onto the new chart
         working-directory: km
@@ -162,3 +183,11 @@ jobs:
           else
             gh pr create --base main --head "$BR" --title "$TITLE" --body "$BODY"
           fi
+
+          # Arm auto-merge so the bump lands without a human. This step used to
+          # stop at PR creation, which left prod chart bumps waiting on someone
+          # noticing the PR. Re-armed unconditionally because GitHub disables
+          # auto-merge on every force-push of the head branch; the || fallback
+          # covers the window where the required check has already gone green,
+          # which makes the PR "clean" and rejects --auto outright.
+          gh pr merge --auto --squash "$BR" || gh pr merge --squash "$BR"
