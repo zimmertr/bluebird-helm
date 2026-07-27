@@ -62,6 +62,10 @@ jobs:
           SHORT="$(echo '${{ github.event.pull_request.head.sha }}' | cut -c1-7)"
           VER="${{ steps.gitversion.outputs.majorMinorPatch }}-pr${{ github.event.pull_request.number }}.g${SHORT}"
           echo "Publishing prerelease chart $VER"
+          # PR charts share the release OCI repo, and semver ranks e.g.
+          # 0.4.3-pr9 above the released 0.4.2 — without this flip Artifact
+          # Hub shows a PR build as the package's latest version.
+          sed -i 's|artifacthub.io/prerelease: "false"|artifacthub.io/prerelease: "true"|' charts/bluebird/Chart.yaml
           echo "$DOCKERHUB_TOKEN" | helm registry login registry-1.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
           helm package charts/bluebird --version "$VER"
           helm push "bluebird-helm-${VER}.tgz" oci://registry-1.docker.io/zimmertr
