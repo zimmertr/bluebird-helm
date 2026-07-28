@@ -39,35 +39,43 @@ probes:
     failureThreshold: 30
     periodSeconds: 5
 
-# Usually leave this empty: supplying a `canary` or `blueGreen` block below
-# selects that strategy, and neither means RollingUpdate. Set it explicitly to
-# force one (RollingUpdate | Recreate -> Deployment, Canary | BlueGreen -> Argo
-# Rollout). An optional `rollingUpdate` map is honored the same way
-# (maxSurge/maxUnavailable); unset, the API defaults apply.
-strategy: ""
+# Render an Argo Rollout instead of a Deployment. The strategy below must then
+# be Canary or BlueGreen.
+useRollout: false
 
 # Deployment and Rollout. Unset uses the API default of 600s.
 progressDeadlineSeconds:
-# Rollout only. Without it, exceeding the deadline marks the Rollout Degraded
-# but never rolls back.
+# Rollout only. Exceeding the deadline otherwise marks it Degraded but never
+# rolls back.
 progressDeadlineAbort: false
 
-# Rollout spec.strategy.canary, verbatim (tpl-rendered). Supplying it selects
-# the Canary strategy. stableService, canaryService, stableMetadata and
-# canaryMetadata are filled in for you; anything env-specific (trafficRouting,
-# analysis, experiments) is opt-in. See the README for an Istio example.
-#
-# canary:
-#   steps:
-#     - setWeight: 33
-#     - setWeight: 66
-#     - setWeight: 100
+# RollingUpdate | Recreate -> Deployment. Canary | BlueGreen -> Argo Rollout.
+# The matching block below (if any) becomes the workload's spec.strategy
+# verbatim. An optional `rollingUpdate` map is honored the same way
+# (maxSurge/maxUnavailable); unset, the API defaults apply.
+strategy: RollingUpdate
 
-# Rollout spec.strategy.blueGreen, verbatim (tpl-rendered). Supplying it selects
-# the BlueGreen strategy; activeService and previewService are filled in.
-#
-# blueGreen:
-#   autoPromotionEnabled: false
+# Rollout spec.strategy.canary, verbatim (tpl-rendered so the defaults track
+# the release name). Anything env-specific — trafficRouting, analysis,
+# experiments — is opt-in; see the README for an Istio example.
+canary:
+  stableService: '{{ include "bluebird.fullname" . }}'
+  canaryService: '{{ include "bluebird.fullname" . }}-canary'
+  stableMetadata:
+    labels:
+      role: stable
+  canaryMetadata:
+    labels:
+      role: canary
+  steps:
+    - setWeight: 33
+    - setWeight: 66
+    - setWeight: 100
+
+# Rollout spec.strategy.blueGreen, verbatim (tpl-rendered).
+blueGreen:
+  activeService: '{{ include "bluebird.fullname" . }}'
+  previewService: '{{ include "bluebird.fullname" . }}-canary'
 
 podAnnotations: {}
 podLabels: {}

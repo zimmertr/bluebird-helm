@@ -48,25 +48,16 @@ sources:
 
 ## Deployment strategy
 
-**Usually you do not set `strategy` at all.** Supplying a `canary` or `blueGreen` block selects that strategy, since there is no reason to configure one you are not using. Supplying neither gives a plain `Deployment`.
+`useRollout` selects the workload kind; `strategy` selects the matching values block (`rollingUpdate` / `canary` / `blueGreen`) becomes the workload's `spec.strategy` **verbatim**:
 
-```yaml
-canary:              # this alone renders an Argo Rollout
-  steps:
-    - setWeight: 50
-```
+| `useRollout` | `strategy` | Rendered kind | Strategy block |
+|---|---|---|---|
+| `false` (default) | `RollingUpdate` (default) | `Deployment` | `rollingUpdate` (optional; unset = API defaults) |
+| `false` | `Recreate` | `Deployment` | — |
+| `true` | `Canary` | Argo `Rollout` | `canary` — the full [Rollout canary spec](https://argo-rollouts.readthedocs.io/en/stable/features/specification/) |
+| `true` | `BlueGreen` | Argo `Rollout` | `blueGreen` — the full Rollout blue-green spec |
 
-Set `strategy` explicitly to override the inference, which is also what keeps values files written against 0.4.x rendering identically:
-
-| `strategy` | Rendered kind | Strategy block |
-|---|---|---|
-| *unset* | inferred from which block you supplied | |
-| `RollingUpdate` | `Deployment` | `rollingUpdate` (optional; unset = API defaults) |
-| `Recreate` | `Deployment` | — |
-| `Canary` | Argo `Rollout` | `canary` — the full [Rollout canary spec](https://argo-rollouts.readthedocs.io/en/stable/features/specification/) |
-| `BlueGreen` | Argo `Rollout` | `blueGreen` — the full Rollout blue-green spec |
-
-The `canary` / `blueGreen` blocks are tpl-rendered, and the chart fills in service names and `role:` pod metadata under whatever you supply, so they track the release name and per-PR preview releases keep working; overrides follow normal Helm coalescing (maps deep-merge, lists like `steps` replace wholesale). `Canary`/`BlueGreen` also render a second `-canary` Service whose name follows `canaryService`/`previewService`.
+The `canary` / `blueGreen` blocks are tpl-rendered, so the shipped defaults (service names, `role:` pod metadata) track the release name and per-PR preview releases keep working; overrides follow normal Helm coalescing (maps deep-merge, lists like `steps` replace wholesale). `Canary`/`BlueGreen` also render a second `-canary` Service whose name follows `canaryService`/`previewService`.
 
 The defaults deliberately stop at what works on any cluster: a bare `strategy: Canary` progresses by ReplicaSet-ratio weighting. Everything environment-specific is opt-in through the same verbatim block — e.g. Istio traffic shifting against the chart's VirtualService (requires `ingress.enabled: true`):
 
@@ -82,7 +73,7 @@ canary:
 
 `analysis`, `experiment` steps, `managedRoutes`, plural `virtualServices`, `pingPong`, ... — any upstream field works the same way. Referenced `AnalysisTemplate`s are not rendered by this chart; deploy them alongside it.
 
-> **Behavior change vs 0.4.x:** probes now default to `GET /healthz` instead of `GET /`. Bluebird serves it (and access-logs it only at `TRACE`, so probe traffic stays out of the logs); set `probes` explicitly if you are running an image that does not.
+> **Behavior change vs 0.4.x:** probes now default to `GET /healthz` instead of `GET /`, and a Rollout requires `useRollout: true` rather than being implied by `strategy: Canary`.
 
 > **Breaking change vs 0.1.x:** `canary.trafficRouting` is no longer a boolean (nor a default) — supply the verbatim `trafficRouting` map above to keep the previous `true` behavior. `canary.dynamicStableScale` is likewise no longer defaulted on. The default image tag is now the chart `appVersion` instead of `latest`, which the image repo never publishes.
 
@@ -106,12 +97,13 @@ canary:
 | `probes.liveness` / `probes.readiness` | `GET /healthz :8000` | Probe definitions |
 | `probes.startup.enabled` | `true` | Enable the startup probe |
 | `probes.startup` | `GET /healthz :8000`, `failureThreshold: 30` | Startup probe definition |
-| `strategy` | *unset* | Overrides the inference below. `RollingUpdate` \| `Recreate` \| `Canary` \| `BlueGreen` |
+| `useRollout` | `false` | Render an Argo `Rollout` instead of a `Deployment` |
 | `progressDeadlineSeconds` | *unset* | Deployment and Rollout; unset = the API default of 600s |
-| `progressDeadlineAbort` | `false` | Rollout only. Without it, exceeding the deadline marks the Rollout Degraded but never rolls back |
+| `progressDeadlineAbort` | `false` | Rollout only. Exceeding the deadline otherwise marks it Degraded but never rolls back |
+| `strategy` | `RollingUpdate` | `RollingUpdate` \| `Recreate` \| `Canary` \| `BlueGreen` — selects which block below applies |
 | `rollingUpdate` | *unset* | Optional Deployment `spec.strategy.rollingUpdate`, verbatim (`maxSurge`/`maxUnavailable`); unset = API defaults |
-| `canary` | *unset*; supplying it selects `Canary` and fills in services + `role:` pod metadata | Rollout `spec.strategy.canary`, verbatim + tpl-rendered. Any upstream field works (`trafficRouting`, `analysis`, `stableMetadata`, ...) |
-| `blueGreen` | *unset*; supplying it selects `BlueGreen` and fills in services | Rollout `spec.strategy.blueGreen`, verbatim + tpl-rendered |
+| `canary` | services, `role:` pod metadata, steps `33 → 66 → 100` | Rollout `spec.strategy.canary`, verbatim + tpl-rendered — any upstream field works (`trafficRouting`, `analysis`, `stableMetadata`, ...) |
+| `blueGreen` | services | Rollout `spec.strategy.blueGreen`, verbatim + tpl-rendered |
 | `podAnnotations` / `podLabels` | `{}` | Extra pod metadata |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` / `[]` / `{}` | Scheduling |
 | `service.type` | `ClusterIP` | Service type |

@@ -1,4 +1,4 @@
-{{- if eq (include "bluebird.isRollout" .) "true" }}
+{{- if .Values.useRollout }}
 {{- /* Second service used by Argo Rollouts: canaryService (Canary) or previewService (BlueGreen). */}}
 apiVersion: v1
 kind: Service
