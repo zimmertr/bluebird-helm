@@ -13,12 +13,6 @@ image:
 imagePullSecrets: []
 
 containerPort: 8000
-# The app's tunable env surface, declared with its baked-in defaults so the
-# chart doubles as the discovery mechanism for what can be configured — the
-# app behaves identically with or without these. Helm replaces lists
-# wholesale: an override supplies the complete set it wants, not a delta.
-# Meanings and details: https://github.com/zimmertr/bluebird → README
-# Configuration table and docs/TRAFFIC.md.
 extraEnv:
   - name: LOG_LEVEL
     value: "WARNING"
