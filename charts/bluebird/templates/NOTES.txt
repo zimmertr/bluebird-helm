@@ -1,4 +1,4 @@
-{{ include "bluebird.fullname" . }} ({{ eq (include "bluebird.isRollout" .) "true" | ternary "Argo Rollout" "Deployment" }}, strategy: {{ .Values.strategy }}) deployed in namespace "{{ include "bluebird.namespace" . }}".
+{{ include "bluebird.fullname" . }} ({{ .Values.useRollout | ternary "Argo Rollout" "Deployment" }}, strategy: {{ .Values.strategy }}) deployed in namespace "{{ include "bluebird.namespace" . }}".
 
 Image:     {{ include "bluebird.image" . }}
 Replicas:  {{ .Values.replicas }}
@@ -10,7 +10,7 @@ Reach it:
   kubectl port-forward -n {{ include "bluebird.namespace" . }} svc/{{ include "bluebird.fullname" . }} 8080:{{ .Values.service.port }}
   # then open http://localhost:8080
 {{- end }}
-{{- if eq (include "bluebird.isRollout" .) "true" }}
+{{- if .Values.useRollout }}
 
 Rollout status:
   kubectl argo rollouts get rollout {{ include "bluebird.fullname" . }} -n {{ include "bluebird.namespace" . }} --watch

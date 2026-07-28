@@ -21,23 +21,33 @@ securityContext: {}
 probes:
   liveness:
     httpGet:
-      path: /
+      path: /healthz
       port: 8000
     initialDelaySeconds: 10
     periodSeconds: 30
   readiness:
     httpGet:
-      path: /
+      path: /healthz
       port: 8000
     initialDelaySeconds: 5
     periodSeconds: 10
   startup:
     enabled: true
     httpGet:
-      path: /
+      path: /healthz
       port: 8000
     failureThreshold: 30
     periodSeconds: 5
+
+# Render an Argo Rollout instead of a Deployment. The strategy below must then
+# be Canary or BlueGreen.
+useRollout: false
+
+# Deployment and Rollout. Unset uses the API default of 600s.
+progressDeadlineSeconds:
+# Rollout only. Exceeding the deadline otherwise marks it Degraded but never
+# rolls back.
+progressDeadlineAbort: false
 
 # RollingUpdate | Recreate -> Deployment. Canary | BlueGreen -> Argo Rollout.
 # The matching block below (if any) becomes the workload's spec.strategy

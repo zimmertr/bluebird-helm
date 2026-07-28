@@ -65,14 +65,6 @@ breaks pulls and Artifact Hub's security scanning.
 {{- end -}}
 
 {{/*
-True when the workload should be an Argo Rollout (Canary/BlueGreen) rather than
-a plain Deployment (RollingUpdate/Recreate).
-*/}}
-{{- define "bluebird.isRollout" -}}
-{{- or (eq .Values.strategy "Canary") (eq .Values.strategy "BlueGreen") -}}
-{{- end -}}
-
-{{/*
 Name of the Rollout's second Service (canaryService / previewService). The
 strategy blocks are verbatim values, so honor an override there; everything
 that must agree on this name (Service, VirtualService destination) derives it

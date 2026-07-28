@@ -48,14 +48,14 @@ sources:
 
 ## Deployment strategy
 
-`strategy` selects the workload kind; the matching values block (`rollingUpdate` / `canary` / `blueGreen`) becomes the workload's `spec.strategy` **verbatim**:
+`useRollout` selects the workload kind; `strategy` selects the matching values block (`rollingUpdate` / `canary` / `blueGreen`) becomes the workload's `spec.strategy` **verbatim**:
 
-| `strategy` | Rendered kind | Strategy block |
-|---|---|---|
-| `RollingUpdate` (default) | `Deployment` | `rollingUpdate` (optional; unset = API defaults) |
-| `Recreate` | `Deployment` | — |
-| `Canary` | Argo `Rollout` | `canary` — the full [Rollout canary spec](https://argo-rollouts.readthedocs.io/en/stable/features/specification/) |
-| `BlueGreen` | Argo `Rollout` | `blueGreen` — the full Rollout blue-green spec |
+| `useRollout` | `strategy` | Rendered kind | Strategy block |
+|---|---|---|---|
+| `false` (default) | `RollingUpdate` (default) | `Deployment` | `rollingUpdate` (optional; unset = API defaults) |
+| `false` | `Recreate` | `Deployment` | — |
+| `true` | `Canary` | Argo `Rollout` | `canary` — the full [Rollout canary spec](https://argo-rollouts.readthedocs.io/en/stable/features/specification/) |
+| `true` | `BlueGreen` | Argo `Rollout` | `blueGreen` — the full Rollout blue-green spec |
 
 The `canary` / `blueGreen` blocks are tpl-rendered, so the shipped defaults (service names, `role:` pod metadata) track the release name and per-PR preview releases keep working; overrides follow normal Helm coalescing (maps deep-merge, lists like `steps` replace wholesale). `Canary`/`BlueGreen` also render a second `-canary` Service whose name follows `canaryService`/`previewService`.
 
@@ -72,6 +72,8 @@ canary:
 ```
 
 `analysis`, `experiment` steps, `managedRoutes`, plural `virtualServices`, `pingPong`, ... — any upstream field works the same way. Referenced `AnalysisTemplate`s are not rendered by this chart; deploy them alongside it.
+
+> **Behavior change vs 0.4.x:** probes now default to `GET /healthz` instead of `GET /`, and a Rollout requires `useRollout: true` rather than being implied by `strategy: Canary`.
 
 > **Breaking change vs 0.1.x:** `canary.trafficRouting` is no longer a boolean (nor a default) — supply the verbatim `trafficRouting` map above to keep the previous `true` behavior. `canary.dynamicStableScale` is likewise no longer defaulted on. The default image tag is now the chart `appVersion` instead of `latest`, which the image repo never publishes.
 
@@ -92,10 +94,13 @@ canary:
 | `resources` | `{}` | Container resource requests/limits |
 | `podSecurityContext` | `{}` | Pod-level security context |
 | `securityContext` | `{}` | Container-level security context |
-| `probes.liveness` / `probes.readiness` | `GET / :8000` | Probe definitions |
+| `probes.liveness` / `probes.readiness` | `GET /healthz :8000` | Probe definitions |
 | `probes.startup.enabled` | `true` | Enable the startup probe |
-| `probes.startup` | `GET / :8000`, `failureThreshold: 30` | Startup probe definition |
-| `strategy` | `RollingUpdate` | `RollingUpdate` \| `Recreate` \| `Canary` \| `BlueGreen` — selects the workload kind and which block below applies |
+| `probes.startup` | `GET /healthz :8000`, `failureThreshold: 30` | Startup probe definition |
+| `useRollout` | `false` | Render an Argo `Rollout` instead of a `Deployment` |
+| `progressDeadlineSeconds` | *unset* | Deployment and Rollout; unset = the API default of 600s |
+| `progressDeadlineAbort` | `false` | Rollout only. Exceeding the deadline otherwise marks it Degraded but never rolls back |
+| `strategy` | `RollingUpdate` | `RollingUpdate` \| `Recreate` \| `Canary` \| `BlueGreen` — selects which block below applies |
 | `rollingUpdate` | *unset* | Optional Deployment `spec.strategy.rollingUpdate`, verbatim (`maxSurge`/`maxUnavailable`); unset = API defaults |
 | `canary` | services, `role:` pod metadata, steps `33 → 66 → 100` | Rollout `spec.strategy.canary`, verbatim + tpl-rendered — any upstream field works (`trafficRouting`, `analysis`, `stableMetadata`, ...) |
 | `blueGreen` | services | Rollout `spec.strategy.blueGreen`, verbatim + tpl-rendered |

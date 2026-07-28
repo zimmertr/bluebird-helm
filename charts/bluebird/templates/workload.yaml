@@ -1,4 +1,4 @@
-{{- $isRollout := eq (include "bluebird.isRollout" .) "true" -}}
+{{- $isRollout := .Values.useRollout -}}
 apiVersion: {{ $isRollout | ternary "argoproj.io/v1alpha1" "apps/v1" }}
 kind: {{ $isRollout | ternary "Rollout" "Deployment" }}
 metadata:
@@ -18,6 +18,12 @@ spec:
   selector:
     matchLabels:
       {{- include "bluebird.selectorLabels" . | nindent 6 }}
+  {{- if ne .Values.progressDeadlineSeconds nil }}
+  progressDeadlineSeconds: {{ .Values.progressDeadlineSeconds }}
+  {{- end }}
+  {{- if and $isRollout .Values.progressDeadlineAbort }}
+  progressDeadlineAbort: true
+  {{- end }}
   {{- /* canary/blueGreen values are the upstream spec.strategy.<kind> verbatim,
          tpl-rendered so the shipped defaults can reference the release name. */}}
   {{- if eq .Values.strategy "Canary" }}
