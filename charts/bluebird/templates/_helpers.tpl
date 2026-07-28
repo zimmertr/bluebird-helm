@@ -65,30 +65,11 @@ breaks pulls and Artifact Hub's security scanning.
 {{- end -}}
 
 {{/*
-The deployment strategy. Supplying a `canary` or `blueGreen` block is taken as
-choosing that strategy, since there is no reason to configure one you are not
-using. An explicit `strategy` still wins, which is what keeps charts written
-against 0.4.x rendering identically.
-*/}}
-{{- define "bluebird.strategy" -}}
-{{- if .Values.strategy -}}
-{{- .Values.strategy -}}
-{{- else if .Values.canary -}}
-{{- print "Canary" -}}
-{{- else if .Values.blueGreen -}}
-{{- print "BlueGreen" -}}
-{{- else -}}
-{{- print "RollingUpdate" -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-True when the workload should be an Argo Rollout (Canary/BlueGreen) rather than
-a plain Deployment (RollingUpdate/Recreate).
+True when the workload should be an Argo Rollout. Supplying a `canary` or
+`blueGreen` block is what selects one; supplying neither gives a Deployment.
 */}}
 {{- define "bluebird.isRollout" -}}
-{{- $strategy := include "bluebird.strategy" . -}}
-{{- or (eq $strategy "Canary") (eq $strategy "BlueGreen") -}}
+{{- if or .Values.canary .Values.blueGreen -}}true{{- end -}}
 {{- end -}}
 
 {{/*
@@ -99,8 +80,8 @@ from here.
 */}}
 {{- define "bluebird.secondaryServiceName" -}}
 {{- $default := printf "%s-canary" (include "bluebird.fullname" .) -}}
-{{- if eq (include "bluebird.strategy" .) "BlueGreen" -}}
-{{- tpl (default $default (.Values.blueGreen | default dict).previewService) . -}}
+{{- if .Values.blueGreen -}}
+{{- tpl (default $default .Values.blueGreen.previewService) . -}}
 {{- else -}}
 {{- tpl (default $default (.Values.canary | default dict).canaryService) . -}}
 {{- end -}}
@@ -114,7 +95,7 @@ above.
 */}}
 {{- define "bluebird.strategySpec" -}}
 {{- $name := include "bluebird.fullname" . -}}
-{{- if eq (include "bluebird.strategy" .) "BlueGreen" -}}
+{{- if .Values.blueGreen -}}
 {{- $defaults := dict "activeService" $name "previewService" (printf "%s-canary" $name) -}}
 {{- toYaml (merge (deepCopy (.Values.blueGreen | default dict)) $defaults) -}}
 {{- else -}}

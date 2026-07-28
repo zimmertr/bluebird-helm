@@ -39,13 +39,6 @@ probes:
     failureThreshold: 30
     periodSeconds: 5
 
-# Usually leave this empty: supplying a `canary` or `blueGreen` block below
-# selects that strategy, and neither means RollingUpdate. Set it explicitly to
-# force one (RollingUpdate | Recreate -> Deployment, Canary | BlueGreen -> Argo
-# Rollout). An optional `rollingUpdate` map is honored the same way
-# (maxSurge/maxUnavailable); unset, the API defaults apply.
-strategy: ""
-
 # Deployment and Rollout. Unset uses the API default of 600s.
 progressDeadlineSeconds:
 # Rollout only. Without it, exceeding the deadline marks the Rollout Degraded
