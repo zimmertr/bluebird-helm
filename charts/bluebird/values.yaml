@@ -13,7 +13,33 @@ image:
 imagePullSecrets: []
 
 containerPort: 8000
-extraEnv: []
+# The app's tunable env surface, declared with its baked-in defaults so the
+# chart doubles as the discovery mechanism for what can be configured — the
+# app behaves identically with or without these. Helm replaces lists
+# wholesale: an override supplies the complete set it wants, not a delta.
+# Meanings and details: https://github.com/zimmertr/bluebird → README
+# Configuration table and docs/TRAFFIC.md.
+extraEnv:
+  - name: LOG_LEVEL
+    value: "WARNING"
+  - name: RATE_LIMIT_ANALYZE_PER_MINUTE
+    value: "12"
+  - name: RATE_LIMIT_ANALYZE_BURST
+    value: "6"
+  - name: RATE_LIMIT_GEOCODE_PER_MINUTE
+    value: "30"
+  - name: RATE_LIMIT_GEOCODE_BURST
+    value: "10"
+  - name: UPSTREAM_CONCURRENCY_WEATHER
+    value: "8"
+  - name: UPSTREAM_CONCURRENCY_AQI
+    value: "8"
+  - name: UPSTREAM_CONCURRENCY_OVERPASS
+    value: "2"
+  - name: NOMINATIM_MIN_INTERVAL_MS
+    value: "2000"
+  - name: UPSTREAM_BUDGET_WAIT_S
+    value: "30"
 resources: {}
 podSecurityContext: {}
 securityContext: {}
