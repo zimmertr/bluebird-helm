@@ -18,6 +18,7 @@ spec:
   selector:
     matchLabels:
       {{- include "bluebird.selectorLabels" . | nindent 6 }}
+  {{- $strategy := include "bluebird.strategy" . }}
   {{- if ne .Values.progressDeadlineSeconds nil }}
   progressDeadlineSeconds: {{ .Values.progressDeadlineSeconds }}
   {{- end }}
@@ -28,20 +29,20 @@ spec:
   {{- end }}
   {{- /* canary/blueGreen values are the upstream spec.strategy.<kind> verbatim,
          tpl-rendered so the shipped defaults can reference the release name. */}}
-  {{- if .Values.canary }}
+  {{- if eq $strategy "Canary" }}
   strategy:
     canary:
       {{- tpl (include "bluebird.strategySpec" .) . | nindent 6 }}
-  {{- else if .Values.blueGreen }}
+  {{- else if eq $strategy "BlueGreen" }}
   strategy:
     blueGreen:
       {{- tpl (include "bluebird.strategySpec" .) . | nindent 6 }}
   {{- else }}
   strategy:
-    type: RollingUpdate
-    {{- with .Values.rollingUpdate }}
+    type: {{ $strategy }}
+    {{- if and (eq $strategy "RollingUpdate") .Values.rollingUpdate }}
     rollingUpdate:
-      {{- toYaml . | nindent 6 }}
+      {{- toYaml .Values.rollingUpdate | nindent 6 }}
     {{- end }}
   {{- end }}
   {{- if and $isRollout .Values.analysis }}
