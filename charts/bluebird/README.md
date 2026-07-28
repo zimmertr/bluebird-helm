@@ -90,7 +90,7 @@ canary:
 | `image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `imagePullSecrets` | `[]` | Image pull secrets |
 | `containerPort` | `8000` | Container port |
-| `extraEnv` | `[]` | Extra container env vars |
+| `extraEnv` | the app's env surface at its baked-in defaults | Container env vars. Ships fully populated as documentation-that-deploys: every tunable the app reads, at the value it would use anyway. Helm replaces lists wholesale, so an override must supply the complete list it wants (see below) |
 | `resources` | `{}` | Container resource requests/limits |
 | `podSecurityContext` | `{}` | Pod-level security context |
 | `securityContext` | `{}` | Container-level security context |
@@ -117,6 +117,35 @@ canary:
 | `ingress.mesh` | `true` | Attach the in-mesh gateway + internal host to the VS |
 | `experiment.enabled` | `false` | Header-matched (`experiment: true`) route |
 | `experiment.host` | `""` | Destination for the experiment route (default: `-canary` service) |
+
+## Environment variables
+
+The default `extraEnv` declares every env var the app reads, at the app's own
+baked-in defaults, so the chart is the one place to discover what can be
+tuned. Deploying the defaults unchanged is a no-op for behavior.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LOG_LEVEL` | `WARNING` | Log verbosity: `TRACE`, `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `RATE_LIMIT_ANALYZE_PER_MINUTE` | `12` | Per-client-address analyze requests per minute, shared by `POST /api/analyze` and `/api/analyze/stream`; `0` disables |
+| `RATE_LIMIT_ANALYZE_BURST` | `6` | Analyze requests an idle client may send back-to-back |
+| `RATE_LIMIT_GEOCODE_PER_MINUTE` | `30` | Per-client-address `GET /api/geocode` requests per minute; `0` disables |
+| `RATE_LIMIT_GEOCODE_BURST` | `10` | Geocode requests an idle client may send back-to-back |
+| `UPSTREAM_CONCURRENCY_WEATHER` | `8` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses |
+| `UPSTREAM_CONCURRENCY_AQI` | `8` | Same cap for the air-quality API |
+| `UPSTREAM_CONCURRENCY_OVERPASS` | `2` | In-flight Overpass queries per pod |
+| `NOMINATIM_MIN_INTERVAL_MS` | `2000` | Minimum spacing between Nominatim calls per pod |
+| `UPSTREAM_BUDGET_WAIT_S` | `30` | Queue bound on a saturated upstream budget before shedding with a 503 |
+
+Per-client limits are enforced per pod, so the effective ceiling is roughly
+the value times `replicas`. Full semantics live in the app repo:
+[README Configuration](https://github.com/zimmertr/bluebird#configuration) and
+[docs/TRAFFIC.md](https://github.com/zimmertr/bluebird/blob/main/docs/TRAFFIC.md).
+
+Because Helm replaces lists, overriding `extraEnv` replaces this whole set —
+restate every variable you still want declared (dropping one only reverts the
+app to that same baked-in default, so the risk is documentation drift, not
+behavior drift).
 
 ## License
 
