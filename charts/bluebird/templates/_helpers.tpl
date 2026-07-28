@@ -65,11 +65,30 @@ breaks pulls and Artifact Hub's security scanning.
 {{- end -}}
 
 {{/*
+The deployment strategy. Supplying a `canary` or `blueGreen` block is taken as
+choosing that strategy, since there is no reason to configure one you are not
+using. An explicit `strategy` still wins, which is what keeps charts written
+against 0.4.x rendering identically.
+*/}}
+{{- define "bluebird.strategy" -}}
+{{- if .Values.strategy -}}
+{{- .Values.strategy -}}
+{{- else if .Values.canary -}}
+{{- print "Canary" -}}
+{{- else if .Values.blueGreen -}}
+{{- print "BlueGreen" -}}
+{{- else -}}
+{{- print "RollingUpdate" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 True when the workload should be an Argo Rollout (Canary/BlueGreen) rather than
 a plain Deployment (RollingUpdate/Recreate).
 */}}
 {{- define "bluebird.isRollout" -}}
-{{- or (eq .Values.strategy "Canary") (eq .Values.strategy "BlueGreen") -}}
+{{- $strategy := include "bluebird.strategy" . -}}
+{{- or (eq $strategy "Canary") (eq $strategy "BlueGreen") -}}
 {{- end -}}
 
 {{/*
@@ -80,9 +99,28 @@ from here.
 */}}
 {{- define "bluebird.secondaryServiceName" -}}
 {{- $default := printf "%s-canary" (include "bluebird.fullname" .) -}}
-{{- if eq .Values.strategy "BlueGreen" -}}
-{{- tpl (default $default .Values.blueGreen.previewService) . -}}
+{{- if eq (include "bluebird.strategy" .) "BlueGreen" -}}
+{{- tpl (default $default (.Values.blueGreen | default dict).previewService) . -}}
 {{- else -}}
-{{- tpl (default $default .Values.canary.canaryService) . -}}
+{{- tpl (default $default (.Values.canary | default dict).canaryService) . -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The strategy block, with the chart's defaults filled in under whatever the user
+supplied. Kept here rather than in values.yaml because a populated default there
+would make "did you configure a canary?" always true and defeat the inference
+above.
+*/}}
+{{- define "bluebird.strategySpec" -}}
+{{- $name := include "bluebird.fullname" . -}}
+{{- if eq (include "bluebird.strategy" .) "BlueGreen" -}}
+{{- $defaults := dict "activeService" $name "previewService" (printf "%s-canary" $name) -}}
+{{- toYaml (merge (deepCopy (.Values.blueGreen | default dict)) $defaults) -}}
+{{- else -}}
+{{- $defaults := dict "stableService" $name "canaryService" (printf "%s-canary" $name)
+      "stableMetadata" (dict "labels" (dict "role" "stable"))
+      "canaryMetadata" (dict "labels" (dict "role" "canary")) -}}
+{{- toYaml (merge (deepCopy (.Values.canary | default dict)) $defaults) -}}
 {{- end -}}
 {{- end -}}

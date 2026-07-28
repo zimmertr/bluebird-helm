@@ -1,4 +1,4 @@
-{{ include "bluebird.fullname" . }} ({{ eq (include "bluebird.isRollout" .) "true" | ternary "Argo Rollout" "Deployment" }}, strategy: {{ .Values.strategy }}) deployed in namespace "{{ include "bluebird.namespace" . }}".
+{{ include "bluebird.fullname" . }} ({{ eq (include "bluebird.isRollout" .) "true" | ternary "Argo Rollout" "Deployment" }}, strategy: {{ include "bluebird.strategy" . }}) deployed in namespace "{{ include "bluebird.namespace" . }}".
 
 Image:     {{ include "bluebird.image" . }}
 Replicas:  {{ .Values.replicas }}

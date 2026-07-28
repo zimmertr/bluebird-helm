@@ -18,20 +18,29 @@ spec:
   selector:
     matchLabels:
       {{- include "bluebird.selectorLabels" . | nindent 6 }}
+  {{- $strategy := include "bluebird.strategy" . }}
+  {{- if ne .Values.progressDeadlineSeconds nil }}
+  progressDeadlineSeconds: {{ .Values.progressDeadlineSeconds }}
+  {{- end }}
+  {{- /* Rollout-only. Without it, blowing the deadline marks the Rollout
+         Degraded but never rolls back. */}}
+  {{- if and $isRollout .Values.progressDeadlineAbort }}
+  progressDeadlineAbort: true
+  {{- end }}
   {{- /* canary/blueGreen values are the upstream spec.strategy.<kind> verbatim,
          tpl-rendered so the shipped defaults can reference the release name. */}}
-  {{- if eq .Values.strategy "Canary" }}
+  {{- if eq $strategy "Canary" }}
   strategy:
     canary:
-      {{- tpl (toYaml .Values.canary) . | nindent 6 }}
-  {{- else if eq .Values.strategy "BlueGreen" }}
+      {{- tpl (include "bluebird.strategySpec" .) . | nindent 6 }}
+  {{- else if eq $strategy "BlueGreen" }}
   strategy:
     blueGreen:
-      {{- tpl (toYaml .Values.blueGreen) . | nindent 6 }}
+      {{- tpl (include "bluebird.strategySpec" .) . | nindent 6 }}
   {{- else }}
   strategy:
-    type: {{ .Values.strategy }}
-    {{- if and (eq .Values.strategy "RollingUpdate") .Values.rollingUpdate }}
+    type: {{ $strategy }}
+    {{- if and (eq $strategy "RollingUpdate") .Values.rollingUpdate }}
     rollingUpdate:
       {{- toYaml .Values.rollingUpdate | nindent 6 }}
     {{- end }}
