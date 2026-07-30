@@ -20,18 +20,28 @@ extraEnv:
     value: "12"
   - name: RATE_LIMIT_ANALYZE_BURST
     value: "6"
+  - name: RATE_LIMIT_DESTINATIONS_PER_MINUTE
+    value: "30"
+  - name: RATE_LIMIT_DESTINATIONS_BURST
+    value: "10"
   - name: RATE_LIMIT_GEOCODE_PER_MINUTE
     value: "30"
   - name: RATE_LIMIT_GEOCODE_BURST
     value: "10"
   - name: UPSTREAM_CONCURRENCY_WEATHER
-    value: "8"
+    value: "4"
   - name: UPSTREAM_CONCURRENCY_AQI
-    value: "8"
+    value: "4"
   - name: UPSTREAM_CONCURRENCY_OVERPASS
     value: "2"
+  - name: UPSTREAM_WEIGHT_PER_MINUTE_WEATHER
+    value: "180"
+  - name: UPSTREAM_WEIGHT_PER_MINUTE_AQI
+    value: "180"
+  - name: UPSTREAM_WEIGHT_MAX_WAIT_S
+    value: "120"
   - name: NOMINATIM_MIN_INTERVAL_MS
-    value: "2000"
+    value: "3500"
   - name: UPSTREAM_BUDGET_WAIT_S
     value: "30"
 resources: {}

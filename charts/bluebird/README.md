@@ -129,12 +129,17 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `LOG_LEVEL` | `WARNING` | Log verbosity: `TRACE`, `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
 | `RATE_LIMIT_ANALYZE_PER_MINUTE` | `12` | Per-client-address analyze requests per minute, shared by `POST /api/analyze` and `/api/analyze/stream`; `0` disables |
 | `RATE_LIMIT_ANALYZE_BURST` | `6` | Analyze requests an idle client may send back-to-back |
+| `RATE_LIMIT_DESTINATIONS_PER_MINUTE` | `30` | Per-client-address `POST /api/destinations` requests per minute, its own bucket; `0` disables |
+| `RATE_LIMIT_DESTINATIONS_BURST` | `10` | Destinations requests an idle client may send back-to-back |
 | `RATE_LIMIT_GEOCODE_PER_MINUTE` | `30` | Per-client-address `GET /api/geocode` requests per minute; `0` disables |
 | `RATE_LIMIT_GEOCODE_BURST` | `10` | Geocode requests an idle client may send back-to-back |
-| `UPSTREAM_CONCURRENCY_WEATHER` | `8` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses |
-| `UPSTREAM_CONCURRENCY_AQI` | `8` | Same cap for the air-quality API |
+| `UPSTREAM_CONCURRENCY_WEATHER` | `4` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses (fairness knob; the weighted budgets are the rate protection) |
+| `UPSTREAM_CONCURRENCY_AQI` | `4` | Same cap for the air-quality API |
+| `UPSTREAM_WEIGHT_PER_MINUTE_WEATHER` | `180` | Per-pod Open-Meteo weather spend in weighted calls per minute (one batched location = one call); 550 safe-rate over 3 replicas. `0` disables pacing |
+| `UPSTREAM_WEIGHT_PER_MINUTE_AQI` | `180` | Same budget for the air-quality API, metered separately |
+| `UPSTREAM_WEIGHT_MAX_WAIT_S` | `120` | A paced batch that would wait longer than this sheds with a 503 |
 | `UPSTREAM_CONCURRENCY_OVERPASS` | `2` | In-flight Overpass queries per pod |
-| `NOMINATIM_MIN_INTERVAL_MS` | `2000` | Minimum spacing between Nominatim calls per pod |
+| `NOMINATIM_MIN_INTERVAL_MS` | `3500` | Minimum spacing between Nominatim calls per pod (3 replicas at 3.5s stay under Nominatim's absolute ~1 req/s) |
 | `UPSTREAM_BUDGET_WAIT_S` | `30` | Queue bound on a saturated upstream budget before shedding with a 503 |
 
 Per-client limits are enforced per pod, so the effective ceiling is roughly
