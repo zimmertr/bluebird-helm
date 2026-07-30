@@ -35,18 +35,97 @@ extraEnv:
   - name: UPSTREAM_CONCURRENCY_OVERPASS
     value: "2"
   - name: UPSTREAM_WEIGHT_PER_MINUTE_WEATHER
-    value: "180"
+    value: "550"
   - name: UPSTREAM_WEIGHT_PER_MINUTE_AQI
-    value: "180"
+    value: "550"
   - name: UPSTREAM_WEIGHT_MAX_WAIT_S
     value: "120"
   - name: NOMINATIM_MIN_INTERVAL_MS
     value: "3500"
   - name: UPSTREAM_BUDGET_WAIT_S
     value: "30"
-resources: {}
-podSecurityContext: {}
-securityContext: {}
+# Measured against live production on 2026-07-30 with cgroup v2 counters
+# (memory.peak and cpu.stat usage_usec, not `kubectl top` -- its decaying ~15s
+# average hides exactly the peaks a limit has to cover). Per pod: idle 2m CPU
+# / 49Mi; 200 concurrent visitors on the static SPA path (~342 req/s per pod)
+# 0.89 cores median, 1.41 peak, 63Mi; discovery load 81Mi peak.
+#
+# No CPU limit on purpose. CFS throttling on a latency-sensitive async service
+# costs tail latency for no benefit when the node has headroom; the request is
+# what earns a scheduling guarantee, and the HPA below is what handles load.
+#
+# The memory limit is the one number here NOT taken from measurement. The
+# analyze fallback carries hourly `series` arrays for every row, so a
+# 1,500-destination 16-day request is plausibly a few hundred MB, and that
+# path was not load-tested. 2Gi is deliberately generous so introducing a
+# limit cannot regress a path that runs unbounded today. Re-measure if the
+# analyze fan-out or the Open-Meteo weight budgets change.
+resources:
+  requests:
+    cpu: 250m
+    memory: 128Mi
+  limits:
+    memory: 2Gi
+
+# Asserts at the pod level what the image already provides: it runs as uid/gid
+# 10001 and writes nothing to disk.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+# readOnlyRootFilesystem needs no writable volume: the image sets
+# PYTHONDONTWRITEBYTECODE=1 and the app has no tempfile use, no file logging
+# and no on-disk cache (both caches are in-process). Verified by running the
+# released image under `docker run --read-only` through a full analyze.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# When enabled, spec.replicas is omitted from the workload entirely so a
+# GitOps controller cannot fight the HPA over it, and minReplicas becomes the
+# floor. CPU is the metric because it is the only one available without a
+# custom-metrics adapter -- and it is a real signal here, since static SPA
+# serving (production's hot path) is CPU-bound. Memory is deliberately absent:
+# in-process caches do not shed on scale-out, so it scales up and never back.
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior: {}
+
+# minAvailable, not maxUnavailable: PDB percentages round UP, so at 3 replicas
+# `maxUnavailable: 50%` allows 2 disruptions and leaves only 1 pod, while
+# `minAvailable: 50%` requires 2 to survive. A percentage rather than an
+# integer so the budget tracks HPA-driven replica changes.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 50%
+  maxUnavailable: ""
+
+# Upstream spec.topologySpreadConstraints, except labelSelector, which the
+# chart injects to match its own pods. maxSkew 1 over hostname spreads one pod
+# per node while nodes last and collapses gracefully when they do not: 3 nodes
+# gives [1,1,1], 2 gives [2,1] with nothing Pending, 1 gives [3] because only
+# one domain exists. Chosen over podAntiAffinity, whose `preferred` form
+# permits needless co-location and whose `required` form leaves pods Pending
+# rather than falling back. No matchLabelKeys: Argo Rollouts labels pods
+# `rollouts-pod-template-hash`, and per-revision spread is what creates canary
+# scheduling deadlocks.
+topologySpreadConstraints: []
 
 probes:
   liveness:
