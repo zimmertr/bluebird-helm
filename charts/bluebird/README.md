@@ -84,16 +84,24 @@ canary:
 | `nameOverride` | `""` | Override `app.kubernetes.io/name` (default `bluebird`) |
 | `fullnameOverride` | `""` | Override resource name base (default: release name) |
 | `commonLabels` / `commonAnnotations` | `{}` | Merged onto every resource |
-| `replicas` | `1` | Replica count |
+| `replicas` | `1` | Replica count. **Omitted from the rendered manifest entirely when `autoscaling.enabled`**, so a GitOps controller cannot fight the HPA over `spec.replicas`; `autoscaling.minReplicas` is the floor instead |
 | `image.name` | `zimmertr/bluebird` | Image repository |
 | `image.tag` | `""` → chart `appVersion` | Image tag (the repo publishes SemVer only, no `latest`) |
 | `image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `imagePullSecrets` | `[]` | Image pull secrets |
 | `containerPort` | `8000` | Container port |
 | `extraEnv` | the app's env surface at its baked-in defaults | Container env vars. Ships fully populated as documentation-that-deploys: every tunable the app reads, at the value it would use anyway. Helm replaces lists wholesale, so an override must supply the complete list it wants (see below) |
-| `resources` | `{}` | Container resource requests/limits |
-| `podSecurityContext` | `{}` | Pod-level security context |
-| `securityContext` | `{}` | Container-level security context |
+| `resources` | CPU request `250m`, memory `128Mi`/`2Gi` | Container resource requests/limits. Sized from cgroup measurements against production; **no CPU limit** by design, since CFS throttling costs tail latency on a latency-sensitive async service for no benefit |
+| `podSecurityContext` | `runAsNonRoot`, uid/gid `10001`, `seccompProfile: RuntimeDefault` | Pod-level security context, asserting what the image already provides |
+| `securityContext` | `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop: [ALL]` | Container-level security context. The read-only root needs no writable volume: the app writes nothing to disk |
+| `autoscaling.enabled` | `false` | Render a HorizontalPodAutoscaler targeting the rendered workload kind (`Rollout` or `Deployment`) |
+| `autoscaling.minReplicas` / `maxReplicas` | `3` / `10` | Bounds. `minReplicas` replaces `replicas` as the floor when enabled |
+| `autoscaling.metrics` | CPU at `70%` utilization | Upstream `spec.metrics` verbatim. CPU because it is the only metric available without a custom-metrics adapter, and a real signal here: static SPA serving is CPU-bound |
+| `autoscaling.behavior` | `{}` | Upstream `spec.behavior` verbatim |
+| `podDisruptionBudget.enabled` | `false` | Render a PodDisruptionBudget selecting this release's pods |
+| `podDisruptionBudget.minAvailable` | `50%` | PDB percentages round **up**, so at 3 replicas this keeps 2 pods; `maxUnavailable: 50%` would instead permit 2 disruptions and leave 1 |
+| `podDisruptionBudget.maxUnavailable` | `""` | Alternative to `minAvailable`; set one, blank the other |
+| `topologySpreadConstraints` | `[]` | Upstream `spec.topologySpreadConstraints` verbatim, except `labelSelector`, which the chart injects to match its own pods |
 | `probes.liveness` / `probes.readiness` | `GET /healthz :8000` | Probe definitions |
 | `probes.startup.enabled` | `true` | Enable the startup probe |
 | `probes.startup` | `GET /healthz :8000`, `failureThreshold: 30` | Startup probe definition |
@@ -135,15 +143,18 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `RATE_LIMIT_GEOCODE_BURST` | `10` | Geocode requests an idle client may send back-to-back |
 | `UPSTREAM_CONCURRENCY_WEATHER` | `4` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses (fairness knob; the weighted budgets are the rate protection) |
 | `UPSTREAM_CONCURRENCY_AQI` | `4` | Same cap for the air-quality API |
-| `UPSTREAM_WEIGHT_PER_MINUTE_WEATHER` | `180` | Per-pod Open-Meteo weather spend in weighted calls per minute (one batched location = one call); 550 safe-rate over 3 replicas. `0` disables pacing |
-| `UPSTREAM_WEIGHT_PER_MINUTE_AQI` | `180` | Same budget for the air-quality API, metered separately |
+| `UPSTREAM_WEIGHT_PER_MINUTE_WEATHER` | `550` | Per-pod Open-Meteo weather spend in weighted calls per minute (one batched location = one call). The full safe rate on **every** pod, not a per-replica share: one analysis runs end to end on one pod and must cover its whole fan-out. `0` disables pacing, which fails analyses rather than slowing them |
+| `UPSTREAM_WEIGHT_PER_MINUTE_AQI` | `550` | Same budget for the air-quality API, metered separately |
 | `UPSTREAM_WEIGHT_MAX_WAIT_S` | `120` | A paced batch that would wait longer than this sheds with a 503 |
 | `UPSTREAM_CONCURRENCY_OVERPASS` | `2` | In-flight Overpass queries per pod |
 | `NOMINATIM_MIN_INTERVAL_MS` | `3500` | Minimum spacing between Nominatim calls per pod (3 replicas at 3.5s stay under Nominatim's absolute ~1 req/s) |
 | `UPSTREAM_BUDGET_WAIT_S` | `30` | Queue bound on a saturated upstream budget before shedding with a 503 |
 
 Per-client limits are enforced per pod, so the effective ceiling is roughly
-the value times `replicas`. Full semantics live in the app repo:
+the value times the current replica count — a range rather than a fixed
+number once `autoscaling` is enabled. The Open-Meteo weighted budgets are
+deliberately per-pod ceilings rather than a rationed share, so they do not
+divide by replica count at all. Full semantics live in the app repo:
 [README Configuration](https://github.com/zimmertr/bluebird#configuration) and
 [docs/TRAFFIC.md](https://github.com/zimmertr/bluebird/blob/main/docs/TRAFFIC.md).
 

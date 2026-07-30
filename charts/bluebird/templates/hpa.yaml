@@ -1,0 +1,29 @@
+{{- if .Values.autoscaling.enabled }}
+{{- /* scaleTargetRef must name the workload kind this chart actually rendered.
+       Argo Rollouts has implemented the scale subresource since v0.3.0, so an
+       HPA drives a Rollout exactly as it drives a Deployment. */}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "bluebird.fullname" . }}
+  namespace: {{ include "bluebird.namespace" . }}
+  labels:
+    {{- include "bluebird.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: {{ .Values.useRollout | ternary "argoproj.io/v1alpha1" "apps/v1" }}
+    kind: {{ .Values.useRollout | ternary "Rollout" "Deployment" }}
+    name: {{ include "bluebird.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    {{- toYaml .Values.autoscaling.metrics | nindent 4 }}
+  {{- with .Values.autoscaling.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

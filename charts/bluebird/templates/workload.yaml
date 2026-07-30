@@ -11,7 +11,13 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
+  {{- /* Omitted entirely when autoscaling, so a GitOps controller re-applying
+         this manifest cannot fight the HPA over spec.replicas. Preferred over
+         Argo CD ignoreDifferences, which only takes effect once the resource
+         exists and so still stamps replicas on the first sync. */}}
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicas }}
+  {{- end }}
   {{- if ne .Values.revisionHistoryLimit nil }}
   revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
   {{- end }}
@@ -105,4 +111,16 @@ spec:
       {{- with .Values.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- /* labelSelector is injected rather than asked for: it must match this
+             workload's own pods, which only the chart knows. Everything else is
+             the upstream field verbatim. */}}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- range . }}
+        - {{ toYaml . | nindent 10 | trim }}
+          labelSelector:
+            matchLabels:
+              {{- include "bluebird.selectorLabels" $ | nindent 14 }}
+        {{- end }}
       {{- end }}
