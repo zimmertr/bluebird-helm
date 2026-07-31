@@ -44,6 +44,14 @@ extraEnv:
     value: "3500"
   - name: UPSTREAM_BUDGET_WAIT_S
     value: "30"
+  - name: RATE_LIMIT_WILDFIRES_PER_MINUTE
+    value: "90"
+  - name: RATE_LIMIT_WILDFIRES_BURST
+    value: "30"
+  - name: WILDFIRE_CACHE_TTL_S
+    value: "600"
+  - name: WILDFIRE_RETRY_AFTER_FAILURE_S
+    value: "60"
 # Measured against live production on 2026-07-30 with cgroup v2 counters
 # (memory.peak and cpu.stat usage_usec, not `kubectl top` -- its decaying ~15s
 # average hides exactly the peaks a limit has to cover). Per pod: idle 2m CPU
@@ -54,6 +62,17 @@ extraEnv:
 # costs tail latency for no benefit when the node has headroom; the request is
 # what earns a scheduling guarantee, and the HPA below is what handles load.
 #
+# The memory REQUEST moved 128Mi -> 256Mi for app 0.44+, which holds a national
+# wildfire-perimeter snapshot in memory rather than letting each visitor query
+# NIFC for themselves (bluebird#203). Measured 2026-07-31 against the live NIFC
+# layer at 232 active fires: 42Mi cold, 184Mi once the snapshot is held, and
+# flat across 20 further national viewports. The cost is resident for the
+# pod's whole life, not per request, so it belongs in the request rather than
+# the headroom under the limit. It is dominated by the full-resolution copy
+# (16.5MB of geometry, 861k vertices), kept at full resolution because the
+# proximity warning measures distances against it; the map's copy is simplified
+# separately. Re-measure if that fidelity choice changes.
+#
 # The memory limit is the one number here NOT taken from measurement. The
 # analyze fallback carries hourly `series` arrays for every row, so a
 # 1,500-destination 16-day request is plausibly a few hundred MB, and that
@@ -63,7 +82,7 @@ extraEnv:
 resources:
   requests:
     cpu: 250m
-    memory: 128Mi
+    memory: 256Mi
   limits:
     memory: 2Gi
 
