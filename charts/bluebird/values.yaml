@@ -171,6 +171,10 @@ probes:
 # be Canary or BlueGreen.
 useRollout: false
 
+# Deployment and Rollout. Unset keeps the field off the manifest, so the API
+# default applies and a controller that owns it is left alone.
+revisionHistoryLimit:
+
 # Deployment and Rollout. Unset uses the API default of 600s.
 progressDeadlineSeconds:
 # Rollout only. Exceeding the deadline otherwise marks it Degraded but never
@@ -199,6 +203,11 @@ canary:
     - setWeight: 33
     - setWeight: 66
     - setWeight: 100
+
+# Rollout spec.analysis, verbatim: background analysis that runs for the whole
+# rollout. Distinct from an `analysis` step inside `canary.steps`, which gates a
+# single step.
+analysis:
 
 # Rollout spec.strategy.blueGreen, verbatim (tpl-rendered).
 blueGreen:

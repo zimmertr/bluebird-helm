@@ -79,6 +79,12 @@ canary:
 
 ## Values
 
+The chart ships a `values.schema.json` that rejects any key it does not read, so
+a typo or a value the chart has since renamed fails `helm template` instead of
+being silently ignored. Every key below is therefore the complete set; a
+consuming repo that pins one of them will hear about it the next time the chart
+stops honoring that name.
+
 | Key | Default | Description |
 |---|---|---|
 | `nameOverride` | `""` | Override `app.kubernetes.io/name` (default `bluebird`) |
@@ -106,12 +112,14 @@ canary:
 | `probes.startup.enabled` | `true` | Enable the startup probe |
 | `probes.startup` | `GET /healthz :8000`, `failureThreshold: 30` | Startup probe definition |
 | `useRollout` | `false` | Render an Argo `Rollout` instead of a `Deployment` |
+| `revisionHistoryLimit` | *unset* | Deployment and Rollout; unset keeps the field off the manifest so the API default applies |
 | `progressDeadlineSeconds` | *unset* | Deployment and Rollout; unset = the API default of 600s |
 | `progressDeadlineAbort` | `false` | Rollout only. Exceeding the deadline otherwise marks it Degraded but never rolls back |
 | `strategy` | `RollingUpdate` | `RollingUpdate` \| `Recreate` \| `Canary` \| `BlueGreen` — selects which block below applies |
 | `rollingUpdate` | *unset* | Optional Deployment `spec.strategy.rollingUpdate`, verbatim (`maxSurge`/`maxUnavailable`); unset = API defaults |
 | `canary` | services, `role:` pod metadata, steps `33 → 66 → 100` | Rollout `spec.strategy.canary`, verbatim + tpl-rendered — any upstream field works (`trafficRouting`, `analysis`, `stableMetadata`, ...) |
 | `blueGreen` | services | Rollout `spec.strategy.blueGreen`, verbatim + tpl-rendered |
+| `analysis` | *unset* | Rollout `spec.analysis`, verbatim: background analysis spanning the whole rollout, as opposed to an `analysis` step inside `canary.steps`, which gates one step |
 | `podAnnotations` / `podLabels` | `{}` | Extra pod metadata |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` / `[]` / `{}` | Scheduling |
 | `service.type` | `ClusterIP` | Service type |

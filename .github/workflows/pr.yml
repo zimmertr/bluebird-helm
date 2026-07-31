@@ -38,6 +38,24 @@ jobs:
       - name: Render portable scenario (plain Deployment, no add-ons)
         run: helm template bluebird charts/bluebird >/dev/null
 
+      # The scenarios above prove the chart renders. This proves it *refuses*,
+      # which is the half consuming repos depend on: helm ignores a value the
+      # chart does not read, so without values.schema.json a consumer pinning a
+      # renamed key keeps rendering green while silently losing the setting.
+      # Asserting the failure here means a schema that stops matching the
+      # templates (additionalProperties dropped, root loosened) fails the PR
+      # rather than quietly ceasing to guard anything.
+      - name: Reject a value the chart does not read
+        run: |
+          if helm template bluebird charts/bluebird \
+               --set thisKeyIsNotInTheSchema=1 >/dev/null 2>err.txt; then
+            echo "::error::values.schema.json accepted an unknown key; the chart no longer guards its values contract."
+            exit 1
+          fi
+          grep -q "Additional property thisKeyIsNotInTheSchema is not allowed" err.txt || {
+            echo "::error::render failed, but not on the schema. Actual error:"; cat err.txt; exit 1; }
+          echo "Rejected as expected."
+
   publish-prerelease:
     name: Publish prerelease chart
     runs-on: ubuntu-latest

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "bluebird-helm values",
+  "description": "Rejects values this chart does not read. Helm silently ignores an unknown key, so a consumer that pins a setting the chart later renames keeps rendering green while losing the setting. `additionalProperties: false` turns that into a failed `helm template`, which is what kustomize and Argo CD both run.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "commonLabels": { "type": "object" },
+    "commonAnnotations": { "type": "object" },
+
+    "replicas": { "type": ["integer", "null"] },
+    "revisionHistoryLimit": { "type": ["integer", "null"] },
+
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "tag": { "type": ["string", "null"] },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "imagePullSecrets": { "type": "array" },
+
+    "containerPort": { "type": "integer" },
+    "extraEnv": { "type": "array" },
+
+    "resources": { "type": "object" },
+    "podSecurityContext": { "type": "object" },
+    "securityContext": { "type": "object" },
+
+    "autoscaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minReplicas": { "type": "integer" },
+        "maxReplicas": { "type": "integer" },
+        "metrics": { "type": "array" },
+        "behavior": { "type": "object" }
+      }
+    },
+
+    "podDisruptionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minAvailable": { "type": ["string", "integer", "null"] },
+        "maxUnavailable": { "type": ["string", "integer", "null"] }
+      }
+    },
+
+    "topologySpreadConstraints": { "type": "array" },
+
+    "probes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "liveness": { "type": ["object", "null"] },
+        "readiness": { "type": ["object", "null"] },
+        "startup": { "type": ["object", "null"] }
+      }
+    },
+
+    "useRollout": { "type": "boolean" },
+    "progressDeadlineSeconds": { "type": ["integer", "null"] },
+    "progressDeadlineAbort": { "type": "boolean" },
+    "strategy": { "enum": ["RollingUpdate", "Recreate", "Canary", "BlueGreen"] },
+    "rollingUpdate": { "type": ["object", "null"] },
+    "canary": { "type": ["object", "null"] },
+    "blueGreen": { "type": ["object", "null"] },
+    "analysis": { "type": ["object", "null"] },
+
+    "podAnnotations": { "type": "object" },
+    "podLabels": { "type": "object" },
+    "nodeSelector": { "type": "object" },
+    "tolerations": { "type": "array" },
+    "affinity": { "type": "object" },
+
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "port": { "type": "integer" },
+        "targetPort": { "type": ["integer", "string"] }
+      }
+    },
+
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "gatewaySelector": { "type": "object" },
+        "hosts": { "type": "array", "items": { "type": "string" } },
+        "port": { "type": "integer" },
+        "httpsRedirect": { "type": "boolean" },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "credentialName": { "type": "string" }
+          }
+        },
+        "mesh": { "type": "boolean" }
+      }
+    },
+
+    "experiment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "host": { "type": "string" }
+      }
+    }
+  }
+}
