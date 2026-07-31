@@ -52,7 +52,11 @@ jobs:
             echo "::error::values.schema.json accepted an unknown key; the chart no longer guards its values contract."
             exit 1
           fi
-          grep -q "Additional property thisKeyIsNotInTheSchema is not allowed" err.txt || {
+          # Matched loosely on purpose: helm 3 says "Additional property X is
+          # not allowed" and helm 4 says "additional properties 'X' not
+          # allowed", and setup-helm above is unpinned. The key name plus
+          # "not allowed" is the part both phrasings agree on.
+          grep -qi "thisKeyIsNotInTheSchema.*not allowed" err.txt || {
             echo "::error::render failed, but not on the schema. Actual error:"; cat err.txt; exit 1; }
           echo "Rejected as expected."
 
