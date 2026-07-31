@@ -91,7 +91,7 @@ canary:
 | `imagePullSecrets` | `[]` | Image pull secrets |
 | `containerPort` | `8000` | Container port |
 | `extraEnv` | the app's env surface at its baked-in defaults | Container env vars. Ships fully populated as documentation-that-deploys: every tunable the app reads, at the value it would use anyway. Helm replaces lists wholesale, so an override must supply the complete list it wants (see below) |
-| `resources` | CPU request `250m`, memory `128Mi`/`2Gi` | Container resource requests/limits. Sized from cgroup measurements against production; **no CPU limit** by design, since CFS throttling costs tail latency on a latency-sensitive async service for no benefit |
+| `resources` | CPU request `250m`, memory `256Mi`/`2Gi` | Container resource requests/limits. Sized from cgroup measurements against production; **no CPU limit** by design, since CFS throttling costs tail latency on a latency-sensitive async service for no benefit. The memory request covers the resident national wildfire-perimeter snapshot the app holds from 0.44 onward (measured 42Mi cold, 184Mi holding it) |
 | `podSecurityContext` | `runAsNonRoot`, uid/gid `10001`, `seccompProfile: RuntimeDefault` | Pod-level security context, asserting what the image already provides |
 | `securityContext` | `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop: [ALL]` | Container-level security context. The read-only root needs no writable volume: the app writes nothing to disk |
 | `autoscaling.enabled` | `false` | Render a HorizontalPodAutoscaler targeting the rendered workload kind (`Rollout` or `Deployment`) |
@@ -141,6 +141,10 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `RATE_LIMIT_DESTINATIONS_BURST` | `10` | Destinations requests an idle client may send back-to-back |
 | `RATE_LIMIT_GEOCODE_PER_MINUTE` | `30` | Per-client-address `GET /api/geocode` requests per minute; `0` disables |
 | `RATE_LIMIT_GEOCODE_BURST` | `10` | Geocode requests an idle client may send back-to-back |
+| `RATE_LIMIT_WILDFIRES_PER_MINUTE` | `90` | Per-client-address `GET /api/wildfires` requests per minute; `0` disables. The loosest bucket: it answers from a snapshot the pod already holds and reaches no upstream, and the map overlay refetches on every pan |
+| `RATE_LIMIT_WILDFIRES_BURST` | `30` | Wildfire requests an idle client may send back-to-back |
+| `WILDFIRE_CACHE_TTL_S` | `600` | How long a fetched national wildfire-perimeter snapshot counts as current. Past it the snapshot is still served, with a refresh running behind the request |
+| `WILDFIRE_RETRY_AFTER_FAILURE_S` | `60` | How long a failed refresh suppresses the next attempt, so an upstream outage does not turn every request into its own retry |
 | `UPSTREAM_CONCURRENCY_WEATHER` | `4` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses (fairness knob; the weighted budgets are the rate protection) |
 | `UPSTREAM_CONCURRENCY_AQI` | `4` | Same cap for the air-quality API |
 | `UPSTREAM_WEIGHT_PER_MINUTE_WEATHER` | `550` | Per-pod Open-Meteo weather spend in weighted calls per minute (one batched location = one call). The full safe rate on **every** pod, not a per-replica share: one analysis runs end to end on one pod and must cover its whole fan-out. `0` disables pacing, which fails analyses rather than slowing them |
