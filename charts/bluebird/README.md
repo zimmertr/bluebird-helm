@@ -145,6 +145,10 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `RATE_LIMIT_WILDFIRES_BURST` | `30` | Wildfire requests an idle client may send back-to-back |
 | `WILDFIRE_CACHE_TTL_S` | `600` | How long a fetched national wildfire-perimeter snapshot counts as current. Past it the snapshot is still served, with a refresh running behind the request |
 | `WILDFIRE_RETRY_AFTER_FAILURE_S` | `60` | How long a failed refresh suppresses the next attempt, so an upstream outage does not turn every request into its own retry |
+| `RATE_LIMIT_SMOKE_PER_MINUTE` | `90` | Per-client-address `GET /api/smoke` requests per minute; `0` disables. As loose as the wildfire bucket and for the same reason: it answers from a snapshot the pod already holds and reaches no upstream |
+| `RATE_LIMIT_SMOKE_BURST` | `30` | Smoke requests an idle client may send back-to-back |
+| `SMOKE_CACHE_TTL_S` | `1800` | How long a fetched NOAA HMS smoke analysis counts as current. Longer than the wildfire TTL because HMS publishes about twice a day, so this bounds how soon a new pass is seen rather than how stale the answer is. Past it the snapshot is still served, with a refresh running behind the request |
+| `SMOKE_RETRY_AFTER_FAILURE_S` | `60` | How long a failed smoke refresh suppresses the next attempt. Same contract as the wildfire twin above |
 | `UPSTREAM_CONCURRENCY_WEATHER` | `4` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses (fairness knob; the weighted budgets are the rate protection) |
 | `UPSTREAM_CONCURRENCY_AQI` | `4` | Same cap for the air-quality API |
 | `UPSTREAM_WEIGHT_PER_MINUTE_WEATHER` | `550` | Per-pod Open-Meteo weather spend in weighted calls per minute (one batched location = one call). The full safe rate on **every** pod, not a per-replica share: one analysis runs end to end on one pod and must cover its whole fan-out. `0` disables pacing, which fails analyses rather than slowing them |

@@ -52,6 +52,14 @@ extraEnv:
     value: "600"
   - name: WILDFIRE_RETRY_AFTER_FAILURE_S
     value: "60"
+  - name: RATE_LIMIT_SMOKE_PER_MINUTE
+    value: "90"
+  - name: RATE_LIMIT_SMOKE_BURST
+    value: "30"
+  - name: SMOKE_CACHE_TTL_S
+    value: "1800"
+  - name: SMOKE_RETRY_AFTER_FAILURE_S
+    value: "60"
 # Measured against live production on 2026-07-30 with cgroup v2 counters
 # (memory.peak and cpu.stat usage_usec, not `kubectl top` -- its decaying ~15s
 # average hides exactly the peaks a limit has to cover). Per pod: idle 2m CPU
@@ -72,6 +80,12 @@ extraEnv:
 # (16.5MB of geometry, 861k vertices), kept at full resolution because the
 # proximity warning measures distances against it; the map's copy is simplified
 # separately. Re-measure if that fidelity choice changes.
+#
+# The smoke snapshot added in bluebird#121 does not move this. It is one day's
+# NOAA HMS analysis held as prebuilt response text: measured 2026-08-04 at
+# 32KB for a quiet day and 447KB of source KML for a busy one, three orders of
+# magnitude under the perimeter set, so the request stays where the fire
+# overlay put it.
 #
 # The memory limit is the one number here NOT taken from measurement. The
 # analyze fallback carries hourly `series` arrays for every row, so a
