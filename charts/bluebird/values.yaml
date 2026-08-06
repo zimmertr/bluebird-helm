@@ -87,6 +87,17 @@ extraEnv:
 # magnitude under the perimeter set, so the request stays where the fire
 # overlay put it.
 #
+# The request moved 256Mi -> 512Mi after the 2026-08 readiness review
+# (bluebird#259). The review read the running pods with the same cgroup v2
+# counters and found 225-253Mi across three healthy replicas at ~1% load --
+# about 98% of the 256Mi request, which made this pod the node's first
+# eviction candidate under memory pressure. The growing part is the wildfire
+# snapshot above, which scales with the national fire count and therefore
+# peaks in fire season rather than in any quiet test. 512Mi is roughly twice
+# the measured steady state; the review's own recommendation was 384Mi and the
+# maintainer chose the larger step for fire-season headroom. Re-measure at the
+# next season peak.
+#
 # The memory limit is the one number here NOT taken from measurement. The
 # analyze fallback carries hourly `series` arrays for every row, so a
 # 1,500-destination 16-day request is plausibly a few hundred MB, and that
@@ -96,7 +107,7 @@ extraEnv:
 resources:
   requests:
     cpu: 250m
-    memory: 256Mi
+    memory: 512Mi
   limits:
     memory: 2Gi
 
