@@ -22,6 +22,28 @@ spec:
     {{- end }}
     - {{ include "bluebird.fullname" . }}
   http:
+    {{- if not .Values.ingress.exposeAnalyzeApi }}
+    # The analyze endpoints are cluster-internal by default (bluebird#240):
+    # one public request can spend thousands of weighted Open-Meteo calls from
+    # the pod's shared budget. The match names the public gateway, so
+    # mesh-routed and Service-direct traffic (the Rollouts api-test probe,
+    # development) is never blocked. The body mirrors the app's own /api
+    # catch-all 404 so nothing new is said and nothing internal is advertised.
+    - name: {{ include "bluebird.fullname" . }}-analyze-internal
+      match:
+        - uri:
+            prefix: /api/analyze
+          gateways:
+            - {{ include "bluebird.fullname" . }}
+      directResponse:
+        status: 404
+        body:
+          string: '{"detail":"No API endpoint at /api/analyze. See /docs for the full API reference, or /openapi.json for the machine-readable schema."}'
+      headers:
+        response:
+          set:
+            content-type: application/json
+    {{- end }}
     {{- if .Values.experiment.enabled }}
     - name: {{ include "bluebird.fullname" . }}-experiment
       match:

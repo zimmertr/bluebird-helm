@@ -242,6 +242,17 @@ ingress:
     enabled: false
     credentialName: ""
   mesh: true
+  # Whether the public gateway routes the analyze endpoints (bluebird#240).
+  # One POST /api/analyze can spend more than three thousand weighted
+  # Open-Meteo calls from the pod's shared budget, and the web app has not
+  # needed the route since its server fallback was removed — so by default the
+  # VirtualService answers /api/analyze* on gateway traffic with the same JSON
+  # 404 the app gives an unknown API path. In-cluster callers are unaffected:
+  # the Argo Rollouts api-test probe and port-forward development hit the
+  # Service directly and never pass the gateway. Preview environments set
+  # true, because their hosts resolve only on the LAN and the PR containers
+  # are where the API is exercised.
+  exposeAnalyzeApi: false
 
 experiment:
   enabled: false
