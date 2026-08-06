@@ -253,6 +253,31 @@ ingress:
     enabled: false
     credentialName: ""
   mesh: true
+  # Least privilege at the publication boundary (bluebird#240): the gateway
+  # routes exactly these /api prefixes -- the surface the web app itself
+  # calls, plus /api/version for checking which build answers. Every other
+  # /api path answers the app's own JSON-404 shape at the edge, so an
+  # endpoint added to the app later is internal until this list says
+  # otherwise, and publishing one is a deliberate edit here. POST
+  # /api/analyze and /api/analyze/stream are the deliberate omissions: one
+  # request can spend thousands of weighted Open-Meteo calls from the pod's
+  # shared budget, and the web app has not called them since its server
+  # fallback was removed. Non-API paths (the SPA, /docs, /privacy, /terms)
+  # are not filtered. In-cluster callers -- the Argo Rollouts api-test
+  # probe, port-forward development, the mesh -- never pass the gateway and
+  # see everything.
+  publicApiPrefixes:
+    - /api/destinations
+    - /api/capabilities
+    - /api/version
+    - /api/geocode
+    - /api/wildfires
+    - /api/smoke
+    - /api/config
+  # Publish the whole /api surface instead, allowlist off. Preview
+  # environments set true: their hosts resolve only on the LAN, and the PR
+  # containers are where the analyze API is exercised.
+  publishFullApi: false
 
 experiment:
   enabled: false
