@@ -123,7 +123,8 @@ canary:
 | `ingress.httpsRedirect` | `false` | Redirect `:80` → `:443` |
 | `ingress.tls.enabled` / `ingress.tls.credentialName` | `false` / `""` | Terminate TLS on `:443` |
 | `ingress.mesh` | `true` | Attach the in-mesh gateway + internal host to the VS |
-| `ingress.exposeAnalyzeApi` | `false` | Whether the public gateway routes `POST /api/analyze*`. Off, the VirtualService answers those paths on gateway traffic with the app's own JSON `404` (bluebird#240): one request there can spend thousands of weighted Open-Meteo calls from the pod's shared budget. In-cluster callers (the Rollouts `api-test` probe, port-forwarded development) bypass the gateway and are unaffected. Preview environments set `true` |
+| `ingress.publicApiPrefixes` | the SPA's own surface + `/api/version` | The `/api` prefixes the public gateway forwards, least privilege (bluebird#240). Any other `/api` path answers the app's own JSON `404` at the edge, so a new endpoint is internal until published here. The deliberate omissions are `POST /api/analyze*`: one request can spend thousands of weighted Open-Meteo calls from the pod's shared budget. Non-API paths (the SPA, `/docs`) are never filtered; in-cluster callers (the Rollouts `api-test` probe, port-forwarded development) bypass the gateway and see everything |
+| `ingress.publishFullApi` | `false` | Skip the allowlist and publish the whole `/api` surface. Preview environments set `true`: their hosts resolve only on the LAN |
 | `experiment.enabled` | `false` | Header-matched (`experiment: true`) route |
 | `experiment.host` | `""` | Destination for the experiment route (default: `-canary` service) |
 
