@@ -22,6 +22,58 @@ spec:
     {{- end }}
     - {{ include "bluebird.fullname" . }}
   http:
+    {{- if not .Values.ingress.publishFullApi }}
+    # Least privilege at the publication boundary (bluebird#240): the gateway
+    # forwards only the /api prefixes named in ingress.publicApiPrefixes, and
+    # every other /api path answers the app's own JSON-404 shape at the edge.
+    # Both rules name the public gateway, so mesh-routed and Service-direct
+    # traffic (the Rollouts api-test probe, development) always sees the full
+    # surface. Non-API paths — the SPA, /docs, /privacy — ride the stable
+    # route below, untouched. This pair sits ahead of the experiment route so
+    # a header cannot reach what the gateway does not publish; the cost is
+    # that an experiment steers only non-API traffic.
+    - name: {{ include "bluebird.fullname" . }}-api-public
+      match:
+        {{- range .Values.ingress.publicApiPrefixes }}
+        - uri:
+            prefix: {{ . | quote }}
+          gateways:
+            - {{ include "bluebird.fullname" $ }}
+        {{- end }}
+      # The same destination pair as the stable route, so naming this route in
+      # canary trafficRouting keeps API traffic canary-weighted too.
+      route:
+        - destination:
+            host: {{ include "bluebird.fullname" . }}
+            port:
+              number: {{ .Values.service.port }}
+          weight: 100
+        {{- if eq .Values.strategy "Canary" }}
+        - destination:
+            host: {{ include "bluebird.secondaryServiceName" . }}
+            port:
+              number: {{ .Values.service.port }}
+          weight: 0
+        {{- end }}
+    - name: {{ include "bluebird.fullname" . }}-api-internal
+      match:
+        - uri:
+            prefix: /api/
+          gateways:
+            - {{ include "bluebird.fullname" . }}
+        - uri:
+            exact: /api
+          gateways:
+            - {{ include "bluebird.fullname" . }}
+      directResponse:
+        status: 404
+        body:
+          string: '{"detail":"No API endpoint at this path. See /docs for the full API reference, or /openapi.json for the machine-readable schema."}'
+      headers:
+        response:
+          set:
+            content-type: application/json
+    {{- end }}
     {{- if .Values.experiment.enabled }}
     - name: {{ include "bluebird.fullname" . }}-experiment
       match:
