@@ -13,6 +13,24 @@ image:
 imagePullSecrets: []
 
 containerPort: 8000
+
+# The app's Prometheus metrics server (backend/app/telemetry.py). `port`
+# drives three faces of one fact — the METRICS_PORT env the app reads, the
+# `metrics` containerPort, and the port the PodMonitor scrapes — so they
+# cannot drift apart; 0 disables the server and removes the port. The port is
+# deliberately never added to the Service: the gateway routes Service ports
+# only, so metrics stay unreachable from the public edge regardless of what
+# the VirtualService publishes.
+metrics:
+  port: 9464
+  # A monitoring.coreos.com/v1 PodMonitor selecting this chart's pods, for
+  # clusters running the prometheus-operator. Off by default because the CRD
+  # must exist first. The pods' `role` label (stable|canary, from the
+  # Rollout's stableMetadata/canaryMetadata below) is copied onto every
+  # series, so a canary's error rate is queryable apart from stable's.
+  podMonitor:
+    enabled: false
+
 extraEnv:
   - name: LOG_LEVEL
     value: "WARNING"

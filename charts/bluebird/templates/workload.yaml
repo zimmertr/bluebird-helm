@@ -80,10 +80,21 @@ spec:
             - name: http
               containerPort: {{ .Values.containerPort }}
               protocol: TCP
-          {{- with .Values.extraEnv }}
+            {{- if .Values.metrics.port }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
           env:
+            {{- /* Driven by metrics.port so this env, the containerPort
+                   above, and the PodMonitor's port name cannot disagree.
+                   First on purpose: with duplicate env names the last
+                   occurrence wins, so an extraEnv override still takes. */}}
+            - name: METRICS_PORT
+              value: {{ .Values.metrics.port | default 0 | quote }}
+            {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           {{- with .Values.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
