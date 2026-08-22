@@ -1,0 +1,31 @@
+{{- /* Scrapes the pod port directly rather than going through the Service:
+       the metrics port is deliberately absent from the Service so nothing the
+       gateway routes can ever reach it, and a pod-level scrape sees every
+       revision's pods (stable and canary) under one selector. Requires the
+       prometheus-operator CRDs, so it is off by default. */}}
+{{- if and .Values.metrics.podMonitor.enabled .Values.metrics.port }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "bluebird.fullname" . }}
+  namespace: {{ include "bluebird.namespace" . }}
+  labels:
+    {{- include "bluebird.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "bluebird.selectorLabels" . | nindent 6 }}
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+  {{- /* role is stable|canary, stamped on pods by the Rollout's
+         stableMetadata/canaryMetadata. Copied onto every series so a
+         canary's error rate is queryable apart from stable's — the split a
+         metric-gated rollout analysis needs. */}}
+  podTargetLabels:
+    - role
+{{- end }}
