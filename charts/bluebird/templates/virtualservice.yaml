@@ -55,6 +55,51 @@ spec:
               number: {{ .Values.service.port }}
           weight: 0
         {{- end }}
+    # The analyze routes, published only to a request that carries a caller's
+    # own Open-Meteo key (bluebird#317). One analyze request can spend
+    # thousands of weighted Open-Meteo calls; a keyed one spends the caller's
+    # quota instead of the pod's, which is what makes the route affordable to
+    # publish at all. The match tests only that the header is non-empty --
+    # whether the key works is Open-Meteo's answer, which the app returns as a
+    # 401. Without the header the request falls through to the 404 route
+    # below, so the pod is never asked to spend anything.
+    #
+    # The header name is hardcoded here because Istio matches a literal, and
+    # the backend is where it is defined: API_KEY_HEADER in
+    # app/routes/analyze.py, published by GET /api/capabilities as
+    # api_key_header. Istio lowercases HTTP/2 header names, so the match is
+    # written lowercase. Renaming it there means editing it here.
+    #
+    # This route sits between -api-public and -api-internal: after the public
+    # allowlist, before the 404, so the 404 stays the last /api rule.
+    {{- if .Values.ingress.keyedApiPrefixes }}
+    - name: {{ include "bluebird.fullname" . }}-api-keyed
+      match:
+        {{- range .Values.ingress.keyedApiPrefixes }}
+        - uri:
+            prefix: {{ . | quote }}
+          headers:
+            x-open-meteo-key:
+              regex: ".+"
+          gateways:
+            - {{ include "bluebird.fullname" $ }}
+        {{- end }}
+      # The same destination pair as -api-public, so keyed traffic is
+      # canary-weighted with everything else.
+      route:
+        - destination:
+            host: {{ include "bluebird.fullname" . }}
+            port:
+              number: {{ .Values.service.port }}
+          weight: 100
+        {{- if eq .Values.strategy "Canary" }}
+        - destination:
+            host: {{ include "bluebird.secondaryServiceName" . }}
+            port:
+              number: {{ .Values.service.port }}
+          weight: 0
+        {{- end }}
+    {{- end }}
     - name: {{ include "bluebird.fullname" . }}-api-internal
       match:
         - uri:
