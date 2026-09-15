@@ -86,8 +86,7 @@ spec:
         {{- end }}
       # The same destination pair as -api-public, so naming this route in
       # canary trafficRouting keeps keyed traffic canary-weighted too. Left
-      # off that list it stays 100/0 stable, which is what production does
-      # today (Kubernetes-Manifests names -stable and -api-public only).
+      # off that list it stays 100/0 stable through every rollout.
       route:
         - destination:
             host: {{ include "bluebird.fullname" . }}
