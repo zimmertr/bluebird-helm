@@ -154,6 +154,8 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `RATE_LIMIT_SMOKE_BURST` | `30` | Smoke requests an idle client may send back-to-back |
 | `SMOKE_CACHE_TTL_S` | `1800` | How long a fetched NOAA HMS smoke analysis counts as current. Longer than the wildfire TTL because HMS publishes about twice a day, so this bounds how soon a new pass is seen rather than how stale the answer is. Past it the snapshot is still served, with a refresh running behind the request |
 | `SMOKE_RETRY_AFTER_FAILURE_S` | `60` | How long a failed smoke refresh suppresses the next attempt. Same contract as the wildfire twin above |
+| `SNODAS_CACHE_TTL_S` | `3600` | How long a held SNODAS snow depth grid counts as current before the pod checks NSIDC for a newer day. NSIDC publishes one file a day, about 13:15 UTC, so a check is one `HEAD` and a download happens once a day. Past it the grid is still served, with the check running behind the request |
+| `SNODAS_RETRY_AFTER_FAILURE_S` | `300` | How long a failed SNODAS fetch suppresses the next attempt. Longer than the wildfire and smoke twins because a fetch is a 5 to 30 MB tar, not a small file |
 | `UPSTREAM_CONCURRENCY_WEATHER` | `4` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses (fairness knob; the weighted budgets are the rate protection) |
 | `UPSTREAM_CONCURRENCY_AQI` | `4` | Same cap for the air-quality API |
 | `UPSTREAM_WEIGHT_PER_MINUTE_WEATHER` | `550` | Per-pod Open-Meteo weather spend in weighted calls per minute (one batched location = one call). The full safe rate on **every** pod, not a per-replica share: one analysis runs end to end on one pod and must cover its whole fan-out. `0` disables pacing, which fails analyses rather than slowing them |
