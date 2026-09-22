@@ -78,6 +78,10 @@ extraEnv:
     value: "1800"
   - name: SMOKE_RETRY_AFTER_FAILURE_S
     value: "60"
+  - name: SNODAS_CACHE_TTL_S
+    value: "3600"
+  - name: SNODAS_RETRY_AFTER_FAILURE_S
+    value: "300"
 # Measured against live production on 2026-07-30 with cgroup v2 counters
 # (memory.peak and cpu.stat usage_usec, not `kubectl top` -- its decaying ~15s
 # average hides exactly the peaks a limit has to cover). Per pod: idle 2m CPU
@@ -98,6 +102,12 @@ extraEnv:
 # (16.5MB of geometry, 861k vertices), kept at full resolution because the
 # proximity warning measures distances against it; the map's copy is simplified
 # separately. Re-measure if that fidelity choice changes.
+#
+# App 0.82+ also holds the day's SNODAS snow depth grid (bluebird#449): the
+# unmasked 8192 x 4096 int16 grid is exactly 64MiB resident per pod for the
+# pod's whole life, plus a transient copy while a refresh decodes the next
+# day's file. Fetched once at start and then checked hourly. Same rule as the
+# wildfire snapshot: resident cost belongs in the request.
 #
 # The smoke snapshot added in bluebird#121 does not move this. It is one day's
 # NOAA HMS analysis held as prebuilt response text: measured 2026-08-04 at
