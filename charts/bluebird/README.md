@@ -23,7 +23,7 @@ namespace: bluebird-system
 helmCharts:
   - name: bluebird-helm
     repo: oci://registry-1.docker.io/zimmertr
-    version: 0.2.0
+    version: <version>
     releaseName: bluebird
     valuesFile: values.yml
 ```
@@ -34,7 +34,7 @@ helmCharts:
 sources:
   - repoURL: oci://registry-1.docker.io/zimmertr/bluebird-helm
     chart: bluebird-helm
-    targetRevision: 0.2.0
+    targetRevision: <version>
     helm:
       releaseName: bluebird-pr-{{ .number }}
       valueFiles: [$values/public/bluebird/values.yml]
@@ -156,7 +156,7 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `SMOKE_RETRY_AFTER_FAILURE_S` | `60` | How long a failed smoke refresh suppresses the next attempt. Same contract as the wildfire twin above |
 | `RATE_LIMIT_CLOSURES_PER_MINUTE` | `90` | Per-client-address `GET /api/closures` requests per minute; `0` disables. As loose as the wildfire bucket and for the same reason: it answers from a snapshot the pod already holds and reaches no upstream, and the two closure overlays refetch on every pan |
 | `RATE_LIMIT_CLOSURES_BURST` | `30` | Closure requests an idle client may send back-to-back |
-| `CLOSURE_CACHE_TTL_S` | `1800` | How long a fetched Forest Service Region 6 closure-order snapshot counts as current. Closure orders are edited by hand a few times a week, so a refresh every 30 minutes is six upstream queries the feed will not have changed between. Past it the snapshot is still served, with a refresh running behind the request |
+| `CLOSURE_CACHE_TTL_S` | `1800` | How long a fetched Forest Service closure-order snapshot (Regions 3, 4 and 6) counts as current. Closure orders are edited by hand a few times a week, so a refresh every 30 minutes is eleven upstream queries the feed will not have changed between. Past it the snapshot is still served, with a refresh running behind the request |
 | `CLOSURE_RETRY_AFTER_FAILURE_S` | `60` | How long a failed closure refresh suppresses the next attempt. Same contract as the wildfire twin above |
 | `SNODAS_CACHE_TTL_S` | `3600` | How long a held SNODAS snow depth grid counts as current before the pod checks NSIDC for a newer day. NSIDC publishes one file a day, about 13:15 UTC, so a check is one `HEAD` and a download happens once a day. Past it the grid is still served, with the check running behind the request |
 | `SNODAS_RETRY_AFTER_FAILURE_S` | `300` | How long a failed SNODAS fetch suppresses the next attempt. Longer than the wildfire and smoke twins because a fetch is a 5 to 30 MB tar, not a small file |
@@ -174,7 +174,7 @@ the value times the current replica count — a range rather than a fixed
 number once `autoscaling` is enabled. The Open-Meteo weighted budgets are
 deliberately per-pod ceilings rather than a rationed share, so they do not
 divide by replica count at all. Full semantics live in the app repo:
-[README Configuration](https://github.com/zimmertr/bluebird#configuration) and
+[docs/CONFIGURATION.md](https://github.com/zimmertr/bluebird/blob/main/docs/CONFIGURATION.md) and
 [docs/TRAFFIC.md](https://github.com/zimmertr/bluebird/blob/main/docs/TRAFFIC.md).
 
 Because Helm replaces lists, overriding `extraEnv` replaces this whole set —

@@ -9,3 +9,14 @@ repositoryID: 00f095e0-2075-4e2e-bac7-4f7d2a3ec066
 owners:
   - name: TJ Zimmerman
     email: tj@tjzimmerman.com
+
+# PR charts (<next patch>-pr<N>.g<sha>, from pr.yml) share this OCI repository
+# with releases, and Artifact Hub lists the highest version as the package's
+# default even when that version carries artifacthub.io/prerelease "true", so
+# without this a PR build became the version the listing offers. The tracker
+# skips a matching version and also removes one it indexed before. `version` is
+# a regular expression; `name` is the chart's `name:` in Chart.yaml. A PR chart
+# can still be pinned by its exact version from the registry.
+ignore:
+  - name: bluebird-helm
+    version: '^[0-9]+\.[0-9]+\.[0-9]+-pr[0-9]+\.g[0-9a-f]+$'

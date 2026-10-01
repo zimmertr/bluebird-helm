@@ -63,8 +63,11 @@ jobs:
           VER="${{ steps.gitversion.outputs.majorMinorPatch }}-pr${{ github.event.pull_request.number }}.g${SHORT}"
           echo "Publishing prerelease chart $VER"
           # PR charts share the release OCI repo, and semver ranks e.g.
-          # 0.4.3-pr9 above the released 0.4.2 — without this flip Artifact
-          # Hub shows a PR build as the package's latest version.
+          # 0.4.3-pr9 above the released 0.4.2. This flag only labels the
+          # version as a prerelease on Artifact Hub; it does NOT stop Artifact
+          # Hub from listing the PR build as the package's default version.
+          # The `ignore` entry in artifacthub-repo.yml is what keeps PR builds
+          # off the listing. Helm itself skips prereleases without the flag.
           sed -i 's|artifacthub.io/prerelease: "false"|artifacthub.io/prerelease: "true"|' charts/bluebird/Chart.yaml
           echo "$DOCKERHUB_TOKEN" | helm registry login registry-1.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
           helm package charts/bluebird --version "$VER"
