@@ -292,7 +292,9 @@ ingress:
   # Least privilege at the publication boundary (bluebird#240): the gateway
   # routes exactly these /api prefixes -- the surface the web app itself
   # calls, plus /api/version for checking which build answers. Every other
-  # /api path answers the app's own JSON-404 shape at the edge, so an
+  # /api path answers the app's own JSON-404 shape at the edge (its `error`
+  # object and its security headers included, copied from the app's
+  # backend/edge_not_found.json and checked against it in CI), so an
   # endpoint added to the app later is internal until this list says
   # otherwise, and publishing one is a deliberate edit here. The analyze
   # routes are not on this list; they are published by keyedApiPrefixes
