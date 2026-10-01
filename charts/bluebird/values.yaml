@@ -294,7 +294,8 @@ ingress:
   # calls, plus /api/version for checking which build answers. Every other
   # /api path answers the app's own JSON-404 shape at the edge (its `error`
   # object and its security headers included, copied from the app's
-  # backend/edge_not_found.json and checked against it in CI), so an
+  # backend/edge_not_found.json and compared with it by the non-blocking
+  # Edge 404 workflow), so an
   # endpoint added to the app later is internal until this list says
   # otherwise, and publishing one is a deliberate edit here. The analyze
   # routes are not on this list; they are published by keyedApiPrefixes
@@ -318,7 +319,10 @@ ingress:
   # the pod's shared free tier. That is what the header buys, and it is why
   # these prefixes are a separate list: without the header the request falls
   # through to the same JSON-404 every unpublished /api path gets, before the
-  # pod is asked to spend anything. The gateway checks only that the header is
+  # pod is asked to spend anything. A browser's CORS preflight for these
+  # prefixes (OPTIONS with Origin and Access-Control-Request-Method) is
+  # forwarded without the header, because a preflight cannot carry it; the
+  # pod's CORS middleware answers it without reaching a route. The gateway checks only that the header is
   # non-empty; whether the key works is Open-Meteo's answer, returned as a
   # 401. Set to an empty list to take the analyze routes off the public
   # gateway entirely, which is the off switch for the feature -- the app has

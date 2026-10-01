@@ -70,6 +70,15 @@ spec:
     # api_key_header. Istio lowercases HTTP/2 header names, so the match is
     # written lowercase. Renaming it there means editing it here.
     #
+    # A browser on another origin cannot send the key on its CORS preflight:
+    # the OPTIONS it sends first names the headers the real request will carry
+    # in Access-Control-Request-Headers and carries none of them. So each
+    # prefix has a second match for a preflight alone -- OPTIONS with an
+    # Origin and an Access-Control-Request-Method -- which the pod's
+    # CORSMiddleware answers itself, before any route or upstream is reached.
+    # A keyless POST still matches neither and gets the 404 below
+    # (bluebird#565).
+    #
     # This route sits between -api-public and -api-internal: after the public
     # allowlist, before the 404, so the 404 stays the last /api rule.
     {{- if .Values.ingress.keyedApiPrefixes }}
@@ -80,6 +89,17 @@ spec:
             prefix: {{ . | quote }}
           headers:
             x-open-meteo-key:
+              regex: ".+"
+          gateways:
+            - {{ include "bluebird.fullname" $ }}
+        - uri:
+            prefix: {{ . | quote }}
+          method:
+            exact: OPTIONS
+          headers:
+            origin:
+              regex: ".+"
+            access-control-request-method:
               regex: ".+"
           gateways:
             - {{ include "bluebird.fullname" $ }}
@@ -106,9 +126,9 @@ spec:
     # path" for the path (a fixed answer cannot repeat the request), the
     # `error` object API callers branch on, and the headers the pod sends on
     # every response (bluebird#132). The source is backend/edge_not_found.json
-    # in the app repo, written from the app itself; the Lint & render check
-    # in .github/workflows/pr.yml fails when this route differs from that
-    # file on bluebird's main, so copy a change from there rather than
+    # in the app repo, written from the app itself; the Edge 404 workflow
+    # (.github/workflows/edge-404.yml) turns red when this route differs from
+    # that file on bluebird's main, so copy a change from there rather than
     # editing here (bluebird#565).
     - name: {{ include "bluebird.fullname" . }}-api-internal
       match:

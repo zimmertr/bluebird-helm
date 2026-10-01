@@ -1,0 +1,63 @@
+name: Edge 404
+
+# The gateway's 404 never reaches the pod, so it is a copy of the pod's own,
+# and a copy kept in another repository drifts without a sound: the body went
+# a release without the app's `error` object (bluebird#565). The app writes
+# down what the copy must say, from the app itself, in
+# backend/edge_not_found.json; this renders the route and compares its status,
+# parsed body and response headers with that file on bluebird's main.
+#
+# Visible, never blocking. Branch protection requires `Lint & render` alone and
+# auto-merge waits on required checks only, so a mismatch shows red without
+# stopping a PR, the automated appVersion bump included. Making it required
+# would let an app-side header change stall chart releases.
+#
+# A workflow of its own rather than a job in pr.yml, because it also runs on
+# main: the appVersion bump that follows every app release merges itself
+# within minutes, so a red mark that lived only on that PR would be gone from
+# view almost at once. The bump's merge lands on main, and a failed run there
+# stays on main's commit list. No schedule: the app file changes only through
+# an app release, and every app release ends in a push here.
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: edge-404-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  edge-404:
+    name: Edge 404 matches the app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Compare the rendered route with the app's record
+        env:
+          EDGE_RECORD: https://raw.githubusercontent.com/zimmertr/bluebird/main/backend/edge_not_found.json
+        run: |
+          if ! curl -fsSL --retry 3 "$EDGE_RECORD" > want-raw.json; then
+            echo "::error::Could not read $EDGE_RECORD, the app's record of what this route must send."
+            exit 1
+          fi
+          helm template bluebird charts/bluebird -n bluebird-system \
+            --set strategy=Canary --set ingress.enabled=true \
+            --set 'ingress.hosts[0]=bluebirdforecast.com' \
+            | yq -o=json 'select(.kind == "VirtualService") | .spec.http[] | select(.name == "bluebird-api-internal")' \
+            > route.json
+          test -s route.json
+          jq -S '{status: .directResponse.status, body: (.directResponse.body.string | fromjson), headers: .headers.response.set}' route.json > got.json
+          jq -S '{status, body, headers}' want-raw.json > want.json
+          if ! diff -u want.json got.json; then
+            echo "::error file=charts/bluebird/templates/virtualservice.yaml::The -api-internal route differs from bluebird's backend/edge_not_found.json (diff above: - is the app, + is the chart). Copy the app's body and headers into the route."
+            exit 1
+          fi

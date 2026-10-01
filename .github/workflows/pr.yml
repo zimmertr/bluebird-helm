@@ -37,35 +37,6 @@ jobs:
             --set 'ingress.hosts[0]=pr-1.ganymede.sol.milkyway' >/dev/null
       - name: Render portable scenario (plain Deployment, no add-ons)
         run: helm template bluebird charts/bluebird >/dev/null
-      # The gateway's 404 never reaches the pod, so it is a copy of the pod's
-      # own, and a copy kept in another repository drifts without a sound: the
-      # body went a release without the app's `error` object (bluebird#565).
-      # The app writes down what the copy must say, from the app itself, in
-      # backend/edge_not_found.json; this renders the route and compares its
-      # status, parsed body and response headers with that file. Read from
-      # bluebird's main rather than the release appVersion names, so a chart
-      # PR that copies a change passes without waiting on the appVersion bump,
-      # and the bump cannot pass without the copy.
-      - name: Edge 404 matches the app
-        env:
-          EDGE_RECORD: https://raw.githubusercontent.com/zimmertr/bluebird/main/backend/edge_not_found.json
-        run: |
-          if ! curl -fsSL --retry 3 "$EDGE_RECORD" > want-raw.json; then
-            echo "::error::Could not read $EDGE_RECORD, the app's record of what this route must send."
-            exit 1
-          fi
-          helm template bluebird charts/bluebird -n bluebird-system \
-            --set strategy=Canary --set ingress.enabled=true \
-            --set 'ingress.hosts[0]=bluebirdforecast.com' \
-            | yq -o=json 'select(.kind == "VirtualService") | .spec.http[] | select(.name == "bluebird-api-internal")' \
-            > route.json
-          test -s route.json
-          jq -S '{status: .directResponse.status, body: (.directResponse.body.string | fromjson), headers: .headers.response.set}' route.json > got.json
-          jq -S '{status, body, headers}' want-raw.json > want.json
-          if ! diff -u want.json got.json; then
-            echo "::error file=charts/bluebird/templates/virtualservice.yaml::The -api-internal route differs from bluebird's backend/edge_not_found.json (diff above: - is the app, + is the chart). Copy the app's body and headers into the route."
-            exit 1
-          fi
 
   publish-prerelease:
     name: Publish prerelease chart
