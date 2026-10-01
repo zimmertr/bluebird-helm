@@ -29,7 +29,7 @@ jobs:
       contents: write  # git tag + GitHub release
     outputs:
       semVer: ${{ steps.gitversion.outputs.semVer }}
-      published: ${{ steps.exists.outputs.exists == 'false' }}
+      published: ${{ steps.exists.outputs.released == 'false' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,16 +43,28 @@ jobs:
 
       - uses: azure/setup-helm@v4
 
-      # Charts are semver-tagged; skip if this version was already pushed.
-      - name: Check if chart version already published
+      # A chart release is three things made in order: the OCI chart, the git
+      # tag, the GitHub release. A guard on the chart alone cannot finish a run
+      # that died between the push and the tag, because a re-run sees the chart
+      # and skips everything. So each piece is made only when it is missing,
+      # and the run is skipped only when all three exist.
+      - name: Check what this version has already published
         id: exists
+        env:
+          VER: ${{ steps.gitversion.outputs.semVer }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          VER="${{ steps.gitversion.outputs.semVer }}"
-          if helm show chart "oci://registry-1.docker.io/zimmertr/bluebird-helm" --version "$VER" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Chart $VER already published — skipping."
+          have() { if "$@" >/dev/null 2>&1; then echo true; else echo false; fi; }
+          CHART=$(have helm show chart "oci://registry-1.docker.io/zimmertr/bluebird-helm" --version "$VER")
+          TAG=$(have git ls-remote --exit-code origin "refs/tags/v${VER}")
+          RELEASE=$(have gh release view "v${VER}" --repo "$GITHUB_REPOSITORY")
+          echo "${VER}: chart=${CHART} tag=${TAG} release=${RELEASE}"
+          echo "exists=${CHART}" >> "$GITHUB_OUTPUT"
+          if [ "${CHART}${TAG}${RELEASE}" = truetruetrue ]; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "Chart $VER already released; skipping."
           else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "released=false" >> "$GITHUB_OUTPUT"
           fi
 
       # appVersion is the chart's default image tag, so it must name a *published*
@@ -85,17 +97,43 @@ jobs:
           helm package charts/bluebird --version "$VER" $APPFLAG
           helm push "bluebird-helm-${VER}.tgz" oci://registry-1.docker.io/zimmertr
 
+      # Each half is made only when missing, so a re-run after a failed tag or
+      # release finishes the job. A tag that names another commit stops the
+      # run rather than being moved. A release finished late, behind a newer
+      # one, must not take "Latest" from it.
       - name: Tag & release
-        if: steps.exists.outputs.exists == 'false'
+        if: steps.exists.outputs.released == 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VER: ${{ steps.gitversion.outputs.semVer }}
         run: |
-          VER="${{ steps.gitversion.outputs.semVer }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v${VER}" -m "Chart v${VER}"
-          git push origin "v${VER}"
-          gh release create "v${VER}" --title "v${VER}" --generate-notes
+          TAG="v${VER}"
+          # The peeled line (^{}) is the commit an annotated tag points at; a
+          # lightweight tag has only the plain line, which is the commit itself.
+          REFS=$(git ls-remote origin "refs/tags/${TAG}" "refs/tags/${TAG}^{}")
+          AT=$(printf '%s\n' "$REFS" | awk '$2 ~ /\^\{\}$/ {print $1; exit}')
+          [ -n "$AT" ] || AT=$(printf '%s\n' "$REFS" | awk 'NF {print $1; exit}')
+          if [ -z "$AT" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Chart ${TAG}"
+            git push origin "$TAG"
+          elif [ "$AT" != "$GITHUB_SHA" ]; then
+            echo "::error::${TAG} already names ${AT}, not ${GITHUB_SHA}."
+            exit 1
+          else
+            echo "${TAG} already names this commit."
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "${TAG} already has a release."
+            exit 0
+          fi
+          LATEST=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null || true)
+          LATEST_FLAG=--latest
+          if [ -n "$LATEST" ] && [ "$(printf '%s\n%s\n' "${LATEST#v}" "$VER" | sort -V | tail -1)" != "$VER" ]; then
+            LATEST_FLAG=--latest=false
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes --verify-tag "$LATEST_FLAG"
 
   # Artifact Hub reads artifacthub-repo.yml from the OCI repo's "artifacthub.io"
   # tag, not from git, so a change to it does nothing until it is pushed there.
@@ -183,7 +221,23 @@ jobs:
       VER: ${{ needs.publish.outputs.semVer }}
       GH_TOKEN: ${{ secrets.GH_PAT }}
     steps:
+      # A re-run that finishes an older chart release after a newer one
+      # shipped must not move either consumer back onto the older chart.
+      - name: Stop if a newer chart is already released
+        id: newest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null || true)
+          if [ -n "$LATEST" ] && [ "$(printf '%s\n%s\n' "${LATEST#v}" "$VER" | sort -V | tail -1)" != "$VER" ]; then
+            echo "::notice::${LATEST} is newer than ${VER}; leaving Kubernetes-Manifests alone."
+            echo "newest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "newest=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Clone Kubernetes-Manifests
+        if: steps.newest.outputs.newest == 'true'
         run: |
           git clone "https://x-access-token:${GH_TOKEN}@github.com/zimmertr/Kubernetes-Manifests.git" km
           cd km
@@ -191,6 +245,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: PR — point PR previews at the new chart
+        if: steps.newest.outputs.newest == 'true'
         working-directory: km
         run: |
           BR="chore/bluebird-preview-chart"
@@ -213,6 +268,7 @@ jobs:
           gh pr merge --auto --squash "$BR" || gh pr merge --squash "$BR"
 
       - name: PR — roll the stable app onto the new chart
+        if: steps.newest.outputs.newest == 'true'
         working-directory: km
         run: |
           # Fixed branch, no ${VER} suffix: a version-suffixed name makes every
