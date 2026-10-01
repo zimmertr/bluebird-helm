@@ -64,6 +64,11 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
+      {{- /* The app never calls the Kubernetes API, so the pod gets no
+             service account token to leak. The Istio sidecar does not need
+             it either: it proves its identity with its own projected
+             istio-token volume, which the injector adds regardless. */}}
+      automountServiceAccountToken: false
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

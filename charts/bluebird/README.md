@@ -184,4 +184,8 @@ behavior drift).
 
 ## License
 
-GPL-3.0-only.
+The chart's templates are GPL-3.0-only, as the repository's
+[LICENSE](https://github.com/zimmertr/bluebird-helm/blob/main/LICENSE) states.
+The chart is a separate work from the image it installs: `zimmertr/bluebird` is
+under the [PolyForm Noncommercial License 1.0.0](https://github.com/zimmertr/bluebird/blob/main/LICENSE),
+which permits noncommercial use only.
