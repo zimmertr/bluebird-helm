@@ -50,7 +50,10 @@ jobs:
         env:
           EDGE_RECORD: https://raw.githubusercontent.com/zimmertr/bluebird/main/backend/edge_not_found.json
         run: |
-          curl -fsSL --retry 3 "$EDGE_RECORD" > want-raw.json
+          if ! curl -fsSL --retry 3 "$EDGE_RECORD" > want-raw.json; then
+            echo "::error::Could not read $EDGE_RECORD, the app's record of what this route must send."
+            exit 1
+          fi
           helm template bluebird charts/bluebird -n bluebird-system \
             --set strategy=Canary --set ingress.enabled=true \
             --set 'ingress.hosts[0]=bluebirdforecast.com' \
