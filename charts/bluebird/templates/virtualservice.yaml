@@ -66,9 +66,18 @@ spec:
     #
     # The header name is hardcoded here because Istio matches a literal, and
     # the backend is where it is defined: API_KEY_HEADER in
-    # app/routes/analyze.py, published by GET /api/capabilities as
+    # app/routes/analyze/route.py, published by GET /api/capabilities as
     # api_key_header. Istio lowercases HTTP/2 header names, so the match is
     # written lowercase. Renaming it there means editing it here.
+    #
+    # A browser on another origin cannot send the key on its CORS preflight:
+    # the OPTIONS it sends first names the headers the real request will carry
+    # in Access-Control-Request-Headers and carries none of them. So each
+    # prefix has a second match for a preflight alone -- OPTIONS with an
+    # Origin and an Access-Control-Request-Method -- which the pod's
+    # CORSMiddleware answers itself, before any route or upstream is reached.
+    # A keyless POST still matches neither and gets the 404 below
+    # (bluebird#565).
     #
     # This route sits between -api-public and -api-internal: after the public
     # allowlist, before the 404, so the 404 stays the last /api rule.
@@ -80,6 +89,17 @@ spec:
             prefix: {{ . | quote }}
           headers:
             x-open-meteo-key:
+              regex: ".+"
+          gateways:
+            - {{ include "bluebird.fullname" $ }}
+        - uri:
+            prefix: {{ . | quote }}
+          method:
+            exact: OPTIONS
+          headers:
+            origin:
+              regex: ".+"
+            access-control-request-method:
               regex: ".+"
           gateways:
             - {{ include "bluebird.fullname" $ }}
@@ -101,6 +121,15 @@ spec:
           weight: 0
         {{- end }}
     {{- end }}
+    # This answer never reaches the pod, so it is a copy of the pod's own 404
+    # and must say what the pod would: the app's catch-all body with "this
+    # path" for the path (a fixed answer cannot repeat the request), the
+    # `error` object API callers branch on, and the headers the pod sends on
+    # every response (bluebird#132). The source is backend/edge_not_found.json
+    # in the app repo, written from the app itself; the Edge 404 workflow
+    # (.github/workflows/edge-404.yml) turns red when this route differs from
+    # that file on bluebird's main, so copy a change from there rather than
+    # editing here (bluebird#565).
     - name: {{ include "bluebird.fullname" . }}-api-internal
       match:
         - uri:
@@ -114,11 +143,19 @@ spec:
       directResponse:
         status: 404
         body:
-          string: '{"detail":"No API endpoint at this path. See /docs for the full API reference, or /openapi.json for the machine-readable schema."}'
+          string: '{"detail":"No API endpoint at this path. See /docs for the full API reference, or /openapi.json for the machine-readable schema.","error":{"code":"not_found","retryable":false}}'
       headers:
         response:
           set:
+            access-control-allow-origin: "*"
+            access-control-expose-headers: Retry-After
+            cache-control: no-cache
+            content-security-policy: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tiles.openfreemap.org https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov; connect-src 'self' data: https://api.open-meteo.com https://air-quality-api.open-meteo.com https://archive-api.open-meteo.com https://tiles.openfreemap.org https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov; worker-src 'self' blob:; child-src 'self' blob:"
             content-type: application/json
+            permissions-policy: geolocation=(self), camera=(), microphone=(), payment=()
+            referrer-policy: strict-origin-when-cross-origin
+            vary: Origin
+            x-content-type-options: nosniff
     {{- end }}
     {{- if .Values.experiment.enabled }}
     - name: {{ include "bluebird.fullname" . }}-experiment
