@@ -13,6 +13,8 @@ Helm chart for [Bluebird](https://github.com/zimmertr/bluebird), published as an
 | Pull request title | The `PR Title` check fails a title that none of `GitVersion.yml`'s patterns reads. It runs on every PR, forks included, and again when the title is edited. |
 | Pull request (same-repo) | A **prerelease** chart `X.Y.Z-pr<n>.g<sha>` is packaged and pushed to the same OCI repo, so a preview can be pinned manually. The `ignore` entry in `artifacthub-repo.yml` keeps these versions off Artifact Hub. |
 
+The chart goes to 1.0 with the app, and only by a PR here whose title carries `!`. Merge it after the app's 1.0.0 has released and its automatic `chore(release): bump chart appVersion to 1.0.0` PR has merged: that PR has no `!`, so it releases a chart patch whose default image is the app's 1.0.0, and the `!` PR after it releases chart 1.0.0 with the same default. The `!` PR must change a file under `charts/**` (or `artifacthub-repo.yml`), or no chart release runs. Merged before the app's 1.0.0, it would give chart 1.0.0 a pre-1.0 default image, and the automatic PR would then release chart 1.0.1.
+
 The full flow, the bump table and how to finish a failed release are in [bluebird's `docs/CICD.md`](https://github.com/zimmertr/bluebird/blob/main/docs/CICD.md).
 
 Consuming repos (e.g. `Kubernetes-Manifests`) pin a chart `version`/`targetRevision` — normally the latest SemVer, occasionally a prerelease.
