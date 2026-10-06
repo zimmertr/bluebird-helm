@@ -38,8 +38,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0  # GitVersion needs full history
-          # This checkout keeps its token in .git/config because the tag step
-          # below pushes with it. Every other checkout drops it.
+          # This checkout keeps its token on disk because the tag step below
+          # pushes with it. Every other checkout drops it.
 
       - uses: gittools/actions/gitversion/setup@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3.2.1
         with:
