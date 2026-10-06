@@ -134,12 +134,12 @@ extraEnv:
 # maintainer chose the larger step for fire-season headroom. Re-measure at the
 # next season peak.
 #
-# The memory limit is the one number here NOT taken from measurement. The
-# analyze fallback carries hourly `series` arrays for every row, so a
-# 1,500-destination 16-day request is plausibly a few hundred MB, and that
-# path was not load-tested. 2Gi is deliberately generous so introducing a
-# limit cannot regress a path that runs unbounded today. Re-measure if the
-# analyze fan-out or the Open-Meteo weight budgets change.
+# Measured 2026-10-06 (bluebird#624): an analysis holds about 100 MB plus 320
+# bytes per destination-hour, and the app refuses one past
+# `limits.max_destination_hours` (1,500,000), which peaks near 600 MB. 2Gi
+# therefore holds the measured steady state, a full 256 MiB forecast cache and
+# two analyses at that budget. Re-measure if the analyze fan-out or the
+# Open-Meteo weight budgets change.
 resources:
   requests:
     cpu: 250m
