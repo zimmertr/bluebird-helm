@@ -8,6 +8,9 @@ on:
       - 'charts/**'
       - 'artifacthub-repo.yml'
       - '.github/workflows/release.yml'
+  # Manual runs from main only: every job below checks the ref, because a
+  # dispatch from another branch would publish that branch's chart under a
+  # prerelease version and open the Kubernetes-Manifests bumps with it.
   workflow_dispatch:
 
 # Serialize chart releases. bump-manifests force-pushes fixed branches in
@@ -25,24 +28,31 @@ jobs:
   publish:
     name: Publish OCI chart
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     permissions:
       contents: write  # git tag + GitHub release
     outputs:
       semVer: ${{ steps.gitversion.outputs.semVer }}
       published: ${{ steps.exists.outputs.released == 'false' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0  # GitVersion needs full history
+          # This checkout keeps its token in .git/config because the tag step
+          # below pushes with it. Every other checkout drops it.
 
-      - uses: gittools/actions/gitversion/setup@v3
+      - uses: gittools/actions/gitversion/setup@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3.2.1
         with:
-          versionSpec: '6.x'
+          # Exact, not '6.x': the version this computes names the chart,
+          # its tag and the bump branches. Dependabot does not read this.
+          versionSpec: '6.8.2'
       - id: gitversion
-        uses: gittools/actions/gitversion/execute@v3
-
-      - uses: azure/setup-helm@v4
-
+        uses: gittools/actions/gitversion/execute@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3.2.1
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          # Exact: with no version the action installs whatever Helm is
+          # newest on the day. Dependabot does not read this input.
+          version: v4.3.0
       # A chart release is three things made in order: the OCI chart, the git
       # tag, the GitHub release. A guard on the chart alone cannot finish a run
       # that died between the push and the tag, because a re-run sees the chart
@@ -87,8 +97,8 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           APP_VER: ${{ steps.appver.outputs.appVersion }}
+          VER: ${{ steps.gitversion.outputs.semVer }}
         run: |
-          VER="${{ steps.gitversion.outputs.semVer }}"
           echo "$DOCKERHUB_TOKEN" | helm registry login registry-1.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
           # Only override appVersion when we resolved one, so a missing release
           # falls back to the Chart.yaml default rather than an empty tag.
@@ -152,17 +162,19 @@ jobs:
     name: Publish Artifact Hub metadata
     runs-on: ubuntu-latest
     needs: publish
+    if: github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0  # the change check diffs against the push's base
+          persist-credentials: false
 
       - name: Check whether Artifact Hub metadata changed
         id: ahmeta
         env:
           BEFORE: ${{ github.event.before }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] \
             || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null \
             || ! git diff --quiet "$BEFORE" "$GITHUB_SHA" -- artifacthub-repo.yml; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -173,8 +185,7 @@ jobs:
 
       - name: Set up ORAS
         if: steps.ahmeta.outputs.changed == 'true'
-        uses: oras-project/setup-oras@v1
-
+        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # v1.2.4
       # The credentials go on the push itself, the way the chart push hands its
       # token to `helm registry login` on stdin, and no config file is involved.
       # A login step does not work against this host: `docker login
@@ -216,7 +227,7 @@ jobs:
     name: Bump Kubernetes-Manifests
     runs-on: ubuntu-latest
     needs: publish
-    if: needs.publish.outputs.published == 'true'
+    if: github.ref == 'refs/heads/main' && needs.publish.outputs.published == 'true'
     env:
       VER: ${{ needs.publish.outputs.semVer }}
       GH_TOKEN: ${{ secrets.GH_PAT }}
