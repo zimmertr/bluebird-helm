@@ -28,6 +28,15 @@ jobs:
             --set 'ingress.hosts[0]=bluebirdforecast.com' \
             --set ingress.tls.enabled=true --set ingress.tls.credentialName=bluebird \
             --set ingress.httpsRedirect=true >/dev/null
+      # Which route each request shape lands on, through the public gateway:
+      # the encoded slash (bluebird#620) and the shapes beside it.
+      - name: Edge route cases (stable scenario)
+        run: |
+          helm template bluebird charts/bluebird -n bluebird-system \
+            --set strategy=Canary --set ingress.enabled=true \
+            --set 'ingress.hosts[0]=bluebirdforecast.com' \
+            | yq -o=json 'select(.kind == "VirtualService")' \
+            | python3 .github/scripts/check_edge_routes.py
       - name: Render preview scenario (Deployment + Istio)
         run: |
           helm template bluebird-pr-1 charts/bluebird -n bluebird-system \
