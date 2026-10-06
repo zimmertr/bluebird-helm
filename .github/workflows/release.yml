@@ -185,7 +185,7 @@ jobs:
 
       - name: Set up ORAS
         if: steps.ahmeta.outputs.changed == 'true'
-        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # v1.2.4
+        uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
       # The credentials go on the push itself, the way the chart push hands its
       # token to `helm registry login` on stdin, and no config file is involved.
       # A login step does not work against this host: `docker login
