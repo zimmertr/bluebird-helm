@@ -42,10 +42,11 @@ extraEnv:
     value: "30"
   - name: RATE_LIMIT_DESTINATIONS_BURST
     value: "10"
+  # Sized so one address's first minute (burst + rate) books the Nominatim gate no faster than it serves (bluebird#627).
   - name: RATE_LIMIT_GEOCODE_PER_MINUTE
-    value: "30"
-  - name: RATE_LIMIT_GEOCODE_BURST
     value: "10"
+  - name: RATE_LIMIT_GEOCODE_BURST
+    value: "3"
   - name: UPSTREAM_CONCURRENCY_WEATHER
     value: "4"
   - name: UPSTREAM_CONCURRENCY_AQI

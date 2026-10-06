@@ -144,8 +144,8 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `RATE_LIMIT_ANALYZE_BURST` | `6` | Analyze requests an idle client may send back-to-back |
 | `RATE_LIMIT_DESTINATIONS_PER_MINUTE` | `30` | Per-client-address `POST /api/destinations` requests per minute, its own bucket; `0` disables |
 | `RATE_LIMIT_DESTINATIONS_BURST` | `10` | Destinations requests an idle client may send back-to-back |
-| `RATE_LIMIT_GEOCODE_PER_MINUTE` | `30` | Per-client-address `GET /api/geocode` requests per minute; `0` disables |
-| `RATE_LIMIT_GEOCODE_BURST` | `10` | Geocode requests an idle client may send back-to-back |
+| `RATE_LIMIT_GEOCODE_PER_MINUTE` | `10` | Per-client-address `GET /api/geocode` requests per minute; `0` disables. With the burst, sized so one address books the Nominatim gate no faster than it serves |
+| `RATE_LIMIT_GEOCODE_BURST` | `3` | Geocode requests an idle client may send back-to-back |
 | `RATE_LIMIT_WILDFIRES_PER_MINUTE` | `90` | Per-client-address `GET /api/wildfires` requests per minute; `0` disables. The loosest bucket: it answers from a snapshot the pod already holds and reaches no upstream, and the map overlay refetches on every pan |
 | `RATE_LIMIT_WILDFIRES_BURST` | `30` | Wildfire requests an idle client may send back-to-back |
 | `WILDFIRE_CACHE_TTL_S` | `600` | How long a fetched national wildfire-perimeter snapshot counts as current. Past it the snapshot is still served, with a refresh running behind the request |
