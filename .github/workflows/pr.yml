@@ -56,8 +56,14 @@ jobs:
   publish-prerelease:
     name: Publish prerelease chart
     runs-on: ubuntu-latest
-    # Only same-repo PRs (fork PRs have no secrets and read-only tokens).
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Only same-repo PRs (fork PRs have no secrets and read-only tokens), and
+    # not Dependabot's: its pull_request runs read Dependabot's own, empty
+    # secret store, so the Docker Hub login below has no credentials and the
+    # push fails with a 401. Nothing is lost by skipping it: dependabot.yml
+    # bumps actions only, never charts/**, so there is no chart to preview.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
