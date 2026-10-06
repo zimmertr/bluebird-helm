@@ -17,8 +17,14 @@ jobs:
     name: Lint & render
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          # Exact: with no version the action installs whatever Helm is
+          # newest on the day. Dependabot does not read this input.
+          version: v4.3.0
       - name: helm lint
         run: helm lint charts/bluebird
       - name: Render stable scenario (Canary + Istio)
@@ -53,23 +59,33 @@ jobs:
     # Only same-repo PRs (fork PRs have no secrets and read-only tokens).
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - uses: gittools/actions/gitversion/setup@v3
+          persist-credentials: false
+      - uses: gittools/actions/gitversion/setup@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3.2.1
         with:
-          versionSpec: '6.x'
+          # Exact, not '6.x': the version this computes names the chart,
+          # its tag and the bump branches. Dependabot does not read this.
+          versionSpec: '6.8.2'
       - id: gitversion
-        uses: gittools/actions/gitversion/execute@v3
-      - uses: azure/setup-helm@v4
+        uses: gittools/actions/gitversion/execute@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3.2.1
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          # Exact: with no version the action installs whatever Helm is
+          # newest on the day. Dependabot does not read this input.
+          version: v4.3.0
       - name: Package & push prerelease
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MAJOR_MINOR_PATCH: ${{ steps.gitversion.outputs.majorMinorPatch }}
         run: |
-          SHORT="$(echo '${{ github.event.pull_request.head.sha }}' | cut -c1-7)"
-          VER="${{ steps.gitversion.outputs.majorMinorPatch }}-pr${{ github.event.pull_request.number }}.g${SHORT}"
+          SHORT="${HEAD_SHA:0:7}"
+          VER="${MAJOR_MINOR_PATCH}-pr${PR_NUMBER}.g${SHORT}"
           echo "Publishing prerelease chart $VER"
           # PR charts share the release OCI repo, and semver ranks e.g.
           # 0.4.3-pr9 above the released 0.4.2. This flag only labels the
