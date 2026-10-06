@@ -25,7 +25,9 @@ spec:
     {{- if not .Values.ingress.publishFullApi }}
     # Least privilege at the publication boundary (bluebird#240): the gateway
     # forwards only the /api prefixes named in ingress.publicApiPrefixes, and
-    # every other /api path answers the app's own JSON-404 shape at the edge.
+    # every other path under /api/ answers the app's own JSON-404 shape at the
+    # edge, whether its slash after "api" is literal or encoded as %2F (the
+    # -api-internal route below says why the encoded form needs its own match).
     # Both rules name the public gateway, so mesh-routed and Service-direct
     # traffic (the Rollouts api-test probe, development) always sees the full
     # surface. Non-API paths — the SPA, /docs, /privacy — ride the stable
@@ -130,6 +132,16 @@ spec:
     # (.github/workflows/edge-404.yml) turns red when this route differs from
     # that file on bluebird's main, so copy a change from there rather than
     # editing here (bluebird#565).
+    #
+    # Every match here, and in the two routes above, compares the path as
+    # literal text, and Istio's default path normalization does not decode
+    # %2F; the pod does, before it routes. So /api%2Fanalyze matched none of
+    # them, fell through to the stable route, and ran the analyze route
+    # without a key (bluebird#620). The regex match refuses that shape in
+    # either case of the hex digit; it must match the whole path, query string
+    # excluded, hence the trailing .*. It covers the shape that dodges every
+    # /api rule at once; an encoded slash later in a path still meets those
+    # rules, and the pod refuses an encoded slash anywhere (#302).
     - name: {{ include "bluebird.fullname" . }}-api-internal
       match:
         - uri:
@@ -138,6 +150,10 @@ spec:
             - {{ include "bluebird.fullname" . }}
         - uri:
             exact: /api
+          gateways:
+            - {{ include "bluebird.fullname" . }}
+        - uri:
+            regex: "(?i)/api%2f.*"
           gateways:
             - {{ include "bluebird.fullname" . }}
       directResponse:
