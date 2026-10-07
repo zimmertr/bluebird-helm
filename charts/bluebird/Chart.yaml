@@ -8,7 +8,11 @@ version: 0.1.0
 # Must be a published zimmertr/bluebird tag — Artifact Hub scans the rendered image.
 appVersion: "0.92.44"
 home: https://bluebirdforecast.com
-icon: https://bluebirdforecast.com/icon.png
+# From the app repository rather than the site: Artifact Hub's indexer fetches
+# the logo once per chart version from its own egress, and every fetch of the
+# site's copy has timed out awaiting headers (the catalog has never shown a
+# logo), while the same bytes answer from GitHub at once.
+icon: https://raw.githubusercontent.com/zimmertr/bluebird/main/frontend/public/icon.png
 sources:
   - https://github.com/zimmertr/bluebird
   - https://github.com/zimmertr/bluebird-helm
