@@ -48,7 +48,7 @@ jobs:
           versionSpec: '6.8.2'
       - id: gitversion
         uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           # Exact: with no version the action installs whatever Helm is
           # newest on the day. Dependabot does not read this input.
