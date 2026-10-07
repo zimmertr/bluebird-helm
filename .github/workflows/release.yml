@@ -41,7 +41,7 @@ jobs:
           # This checkout keeps its token on disk because the tag step below
           # pushes with it. Every other checkout drops it.
 
-      - uses: gittools/actions/gitversion/setup@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3.2.1
+      - uses: gittools/actions/gitversion/setup@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
         with:
           # Exact, not '6.x': the version this computes names the chart,
           # its tag and the bump branches. Dependabot does not read this.
