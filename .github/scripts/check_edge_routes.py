@@ -17,6 +17,18 @@ reads the same way RE2 does for these patterns) on the URI; `exact` and
 to. A route with no match is the catch-all. Requests arrive through the public
 gateway, because that is the boundary these rules exist for.
 
+With `--tunnel` it walks the render with `ingress.tunnel.peerRegex` set
+(`tunnel_values.yaml` beside this file), where the gateway removes
+CF-Connecting-IP from every request that did not come through the tunnel
+(bluebird#631). The peer the gateway saw is modelled the way Envoy writes it:
+appended as the last X-Forwarded-For hop, after anything the client sent. Each
+request shape is then sent once from the tunnel's peer, where it must land on
+its usual route with the header kept, and once from each peer a LAN device can
+arrive as, where it must land on that route's `-off-tunnel` twin with the
+header removed. Without `--tunnel`, no route may remove the header at all,
+because the strip is opt-in and a deployment without a tunnel keeps today's
+behaviour.
+
 Standard library only, like check_pr_title.py: the workflow pipes the
 VirtualService in as JSON (`yq -o=json`) and runs this on the runner's Python.
 """
@@ -70,6 +82,31 @@ CASES = [
 ]
 
 
+# The address a cloudflared pod has in the scenario's pod network, and the
+# peers a LAN device reaches the gateway as. kube-proxy rewrites a LAN client's
+# address to the node's cni0 (.1) or flannel.1 (.0) address on the way to a
+# gateway Service with externalTrafficPolicy Cluster, and keeps the client's own
+# address under Local. The last pair is a LAN client that typed the tunnel's
+# address into X-Forwarded-For itself: the gateway's hop still comes after it.
+TUNNEL_PEER = "10.244.2.62"
+OFF_TUNNEL = [
+    ("10.244.0.1", ""),
+    ("10.244.0.0", ""),
+    ("192.168.40.50", ""),
+    ("10.244.0.1", TUNNEL_PEER),
+    ("10.244.0.1", f"203.0.113.7, {TUNNEL_PEER}"),
+]
+# What Cloudflare's edge sends through the tunnel: the visitor's address.
+TUNNEL_CLIENT_XFF = "203.0.113.7"
+STRIPPED = "cf-connecting-ip"
+NO_TWIN = {"-api-internal"}
+
+
+def _xff(client_typed: str, peer: str, separator: str) -> str:
+    """X-Forwarded-For as the gateway routes on it: the peer appended last."""
+    return f"{client_typed}{separator}{peer}" if client_typed else peer
+
+
 def _string_match(rule: dict, value: str | None) -> bool:
     if value is None:
         return False
@@ -82,7 +119,7 @@ def _string_match(rule: dict, value: str | None) -> bool:
     raise SystemExit(f"unmodelled string match: {rule}")
 
 
-def _accepts(match: dict, case: Case, gateway: str) -> bool:
+def _accepts(match: dict, case: Case, gateway: str, xff: str | None = None) -> bool:
     known = {"uri", "headers", "method", "gateways"}
     if set(match) - known:
         raise SystemExit(f"unmodelled match fields: {sorted(set(match) - known)}")
@@ -92,44 +129,104 @@ def _accepts(match: dict, case: Case, gateway: str) -> bool:
         return False
     if "method" in match and not _string_match(match["method"], case.method):
         return False
+    headers = dict(case.headers)
+    if xff is not None:
+        headers["x-forwarded-for"] = xff
     return all(
-        _string_match(rule, case.headers.get(name))
-        for name, rule in match.get("headers", {}).items()
+        _string_match(rule, headers.get(name)) for name, rule in match.get("headers", {}).items()
     )
 
 
-def first_route(http: list[dict], case: Case, gateway: str) -> str | None:
+def first_route(
+    http: list[dict], case: Case, gateway: str, xff: str | None = None
+) -> dict | None:
     for route in http:
         matches = route.get("match")
-        if not matches or any(_accepts(m, case, gateway) for m in matches):
-            return route["name"]
+        if not matches or any(_accepts(m, case, gateway, xff) for m in matches):
+            return route
     return None
 
 
-def main() -> int:
+def _strips(route: dict) -> bool:
+    removed = route.get("headers", {}).get("request", {}).get("remove", [])
+    return STRIPPED in [name.lower() for name in removed]
+
+
+def _report(failures: list[str], ok: bool, shown: str, got: str | None, want: str) -> None:
+    if ok:
+        print(f"ok    {shown} -> {got}")
+        return
+    failures.append(shown)
+    print(f"FAIL  {shown} -> {got}, want {want}")
+    print(
+        f"::error file=charts/bluebird/templates/virtualservice.yaml::"
+        f"{shown} reaches {got}, not {want}."
+    )
+
+
+def _structure(http: list[dict], tunnel: bool) -> list[str]:
+    """Every route that forwards to the pod either keeps the header only for a
+    tunnel peer, or removes it; and without a tunnel, none removes it."""
+    problems = []
+    for route in http:
+        if "route" not in route:
+            continue
+        name = route["name"]
+        if not tunnel:
+            if _strips(route):
+                problems.append(f"{name} removes {STRIPPED} with no tunnel configured")
+            continue
+        matches = route.get("match") or []
+        tunnel_only = bool(matches) and all(
+            "x-forwarded-for" in m.get("headers", {}) for m in matches
+        )
+        if not tunnel_only and not _strips(route):
+            problems.append(f"{name} forwards {STRIPPED} from a peer that is not the tunnel")
+    for problem in problems:
+        print(f"FAIL  {problem}")
+        print(f"::error file=charts/bluebird/templates/virtualservice.yaml::{problem}.")
+    return problems
+
+
+def main(argv: list[str]) -> int:
+    tunnel = "--tunnel" in argv
     service = json.load(sys.stdin)
     public = [g for g in service["spec"]["gateways"] if g != "mesh"]
     if len(public) != 1:
         raise SystemExit(f"expected one public gateway, found {public}")
     gateway = public[0]
     http = service["spec"]["http"]
-    failures = 0
+    failures: list[str] = []
+    walked = 0
     for case in CASES:
-        want = gateway + case.route
-        got = first_route(http, case, gateway)
         shown = f"{case.method} {case.path}" + (f" {sorted(case.headers)}" if case.headers else "")
-        if got == want:
-            print(f"ok    {shown} -> {got}")
-        else:
-            failures += 1
-            print(f"FAIL  {shown} -> {got}, want {want}")
-            print(
-                f"::error file=charts/bluebird/templates/virtualservice.yaml::"
-                f"{shown} reaches {got}, not {want}."
-            )
-    print(f"{len(CASES) - failures} of {len(CASES)} request shapes land on their route.")
-    return 1 if failures else 0
+        if not tunnel:
+            walked += 1
+            want = gateway + case.route
+            route = first_route(http, case, gateway)
+            got = route and route["name"]
+            _report(failures, got == want, shown, got, want)
+            continue
+        for separator in (",", ", "):
+            walked += 1
+            want = gateway + case.route
+            route = first_route(http, case, gateway, _xff(TUNNEL_CLIENT_XFF, TUNNEL_PEER, separator))
+            got = route and route["name"]
+            ok = got == want and not (route and _strips(route))
+            _report(failures, ok, f"{shown} from the tunnel", got, f"{want}, header kept")
+            for peer, typed in OFF_TUNNEL:
+                walked += 1
+                twin = case.route in NO_TWIN
+                want = gateway + case.route + ("" if twin else "-off-tunnel")
+                route = first_route(http, case, gateway, _xff(typed, peer, separator))
+                got = route and route["name"]
+                ok = got == want and (twin or bool(route and _strips(route)))
+                origin = f"{shown} from {peer}" + (f" typing {typed!r}" if typed else "")
+                _report(failures, ok, origin, got, want + ("" if twin else ", header removed"))
+    problems = _structure(http, tunnel)
+    print(f"{walked - len(failures)} of {walked} request shapes land on their route.")
+    return 1 if failures or problems else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))
