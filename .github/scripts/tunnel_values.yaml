@@ -1,0 +1,9 @@
+# The tunnel scenario check_edge_routes.py --tunnel walks. The pattern is the
+# shape a flannel cluster needs: a pod address in 10.244.0.0/16 (cloudflared's
+# pods), but not a node's .0 (flannel.1) or .1 (cni0) address, because those
+# are what kube-proxy rewrites a LAN client's address to on its way to a
+# gateway Service with externalTrafficPolicy Cluster (bluebird#631). No
+# unbounded `.*`: it would also match a client-typed hop before the last one.
+ingress:
+  tunnel:
+    peerRegex: '10\.244\.\d+\.(?:[2-9]|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])'

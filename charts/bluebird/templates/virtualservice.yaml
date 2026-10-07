@@ -22,6 +22,30 @@ spec:
     {{- end }}
     - {{ include "bluebird.fullname" . }}
   http:
+    {{- $fullname := include "bluebird.fullname" . }}
+    {{- $lanes := list "" }}
+    {{- $peerMatch := "" }}
+    {{- with .Values.ingress.tunnel.peerRegex }}
+    {{- $lanes = list "tunnel" "off-tunnel" }}
+    {{- /* The gateway appends the TCP peer it saw as the last X-Forwarded-For
+    hop, after anything the client sent, and the header match is a whole-value
+    RE2 match, so this tests that last hop alone. */}}
+    {{- $peerMatch = printf "(?:.*,)?\\s*(?:%s)" . }}
+    # CF-Connecting-IP is believed by the app's rate limiter, and only
+    # Cloudflare overwrites it. The tunnel is the only path from the internet,
+    # but the gateway is also a LAN address that serves these same hosts, so a
+    # device on the home network that reaches it directly could set the header
+    # to any address (bluebird#631). So every forwarding route below comes as a
+    # pair. The first keeps its usual name and matches only a request whose
+    # peer, the last X-Forwarded-For hop the gateway appends itself, matches
+    # ingress.tunnel.peerRegex; a client cannot write that hop, because the
+    # gateway adds it after whatever the client sent. The second, named
+    # -off-tunnel, matches the same paths from any other peer, mesh traffic
+    # included, and removes the header, so the app keys that request on the
+    # address the gateway saw instead. The 404 route needs no pair: it never
+    # reaches the pod. Rollouts weights only the routes trafficRouting names,
+    # so an -off-tunnel route left off that list stays 100/0 stable.
+    {{- end }}
     {{- if not .Values.ingress.publishFullApi }}
     # Least privilege at the publication boundary (bluebird#240): the gateway
     # forwards only the /api prefixes named in ingress.publicApiPrefixes, and
@@ -34,29 +58,42 @@ spec:
     # route below, untouched. This pair sits ahead of the experiment route so
     # a header cannot reach what the gateway does not publish; the cost is
     # that an experiment steers only non-API traffic.
-    - name: {{ include "bluebird.fullname" . }}-api-public
+    {{- range $lane := $lanes }}
+    - name: {{ $fullname }}-api-public{{ if eq $lane "off-tunnel" }}-off-tunnel{{ end }}
       match:
-        {{- range .Values.ingress.publicApiPrefixes }}
+        {{- range $.Values.ingress.publicApiPrefixes }}
         - uri:
             prefix: {{ . | quote }}
+          {{- if eq $lane "tunnel" }}
+          headers:
+            x-forwarded-for:
+              regex: {{ $peerMatch | quote }}
+          {{- end }}
           gateways:
-            - {{ include "bluebird.fullname" $ }}
+            - {{ $fullname }}
         {{- end }}
+      {{- if eq $lane "off-tunnel" }}
+      headers:
+        request:
+          remove:
+            - cf-connecting-ip
+      {{- end }}
       # The same destination pair as the stable route, so naming this route in
       # canary trafficRouting keeps API traffic canary-weighted too.
       route:
         - destination:
-            host: {{ include "bluebird.fullname" . }}
+            host: {{ $fullname }}
             port:
-              number: {{ .Values.service.port }}
+              number: {{ $.Values.service.port }}
           weight: 100
-        {{- if eq .Values.strategy "Canary" }}
+        {{- if eq $.Values.strategy "Canary" }}
         - destination:
-            host: {{ include "bluebird.secondaryServiceName" . }}
+            host: {{ include "bluebird.secondaryServiceName" $ }}
             port:
-              number: {{ .Values.service.port }}
+              number: {{ $.Values.service.port }}
           weight: 0
         {{- end }}
+    {{- end }}
     # The analyze routes, published only to a request that carries a caller's
     # own Open-Meteo key (bluebird#317). One analyze request can spend
     # thousands of weighted Open-Meteo calls; a keyed one spends the caller's
@@ -84,16 +121,21 @@ spec:
     # This route sits between -api-public and -api-internal: after the public
     # allowlist, before the 404, so the 404 stays the last /api rule.
     {{- if .Values.ingress.keyedApiPrefixes }}
-    - name: {{ include "bluebird.fullname" . }}-api-keyed
+    {{- range $lane := $lanes }}
+    - name: {{ $fullname }}-api-keyed{{ if eq $lane "off-tunnel" }}-off-tunnel{{ end }}
       match:
-        {{- range .Values.ingress.keyedApiPrefixes }}
+        {{- range $.Values.ingress.keyedApiPrefixes }}
         - uri:
             prefix: {{ . | quote }}
           headers:
             x-open-meteo-key:
               regex: ".+"
+            {{- if eq $lane "tunnel" }}
+            x-forwarded-for:
+              regex: {{ $peerMatch | quote }}
+            {{- end }}
           gateways:
-            - {{ include "bluebird.fullname" $ }}
+            - {{ $fullname }}
         - uri:
             prefix: {{ . | quote }}
           method:
@@ -103,25 +145,36 @@ spec:
               regex: ".+"
             access-control-request-method:
               regex: ".+"
+            {{- if eq $lane "tunnel" }}
+            x-forwarded-for:
+              regex: {{ $peerMatch | quote }}
+            {{- end }}
           gateways:
-            - {{ include "bluebird.fullname" $ }}
+            - {{ $fullname }}
         {{- end }}
+      {{- if eq $lane "off-tunnel" }}
+      headers:
+        request:
+          remove:
+            - cf-connecting-ip
+      {{- end }}
       # The same destination pair as -api-public, so naming this route in
       # canary trafficRouting keeps keyed traffic canary-weighted too. Left
       # off that list it stays 100/0 stable through every rollout.
       route:
         - destination:
-            host: {{ include "bluebird.fullname" . }}
+            host: {{ $fullname }}
             port:
-              number: {{ .Values.service.port }}
+              number: {{ $.Values.service.port }}
           weight: 100
-        {{- if eq .Values.strategy "Canary" }}
+        {{- if eq $.Values.strategy "Canary" }}
         - destination:
-            host: {{ include "bluebird.secondaryServiceName" . }}
+            host: {{ include "bluebird.secondaryServiceName" $ }}
             port:
-              number: {{ .Values.service.port }}
+              number: {{ $.Values.service.port }}
           weight: 0
         {{- end }}
+    {{- end }}
     {{- end }}
     # This answer never reaches the pod, so it is a copy of the pod's own 404
     # and must say what the pod would: the app's catch-all body with "this
@@ -174,29 +227,59 @@ spec:
             x-content-type-options: nosniff
     {{- end }}
     {{- if .Values.experiment.enabled }}
-    - name: {{ include "bluebird.fullname" . }}-experiment
+    {{- range $lane := $lanes }}
+    - name: {{ $fullname }}-experiment{{ if eq $lane "off-tunnel" }}-off-tunnel{{ end }}
       match:
         - headers:
             experiment:
               exact: "true"
+            {{- if eq $lane "tunnel" }}
+            x-forwarded-for:
+              regex: {{ $peerMatch | quote }}
+          gateways:
+            - {{ $fullname }}
+            {{- end }}
+      {{- if eq $lane "off-tunnel" }}
+      headers:
+        request:
+          remove:
+            - cf-connecting-ip
+      {{- end }}
       route:
         - destination:
-            host: {{ default (printf "%s-canary" (include "bluebird.fullname" .)) .Values.experiment.host }}
+            host: {{ default (printf "%s-canary" $fullname) $.Values.experiment.host }}
             port:
-              number: {{ .Values.service.port }}
+              number: {{ $.Values.service.port }}
     {{- end }}
-    - name: {{ include "bluebird.fullname" . }}-stable
+    {{- end }}
+    {{- range $lane := $lanes }}
+    - name: {{ $fullname }}-stable{{ if eq $lane "off-tunnel" }}-off-tunnel{{ end }}
+      {{- if eq $lane "tunnel" }}
+      match:
+        - headers:
+            x-forwarded-for:
+              regex: {{ $peerMatch | quote }}
+          gateways:
+            - {{ $fullname }}
+      {{- end }}
+      {{- if eq $lane "off-tunnel" }}
+      headers:
+        request:
+          remove:
+            - cf-connecting-ip
+      {{- end }}
       route:
         - destination:
-            host: {{ include "bluebird.fullname" . }}
+            host: {{ $fullname }}
             port:
-              number: {{ .Values.service.port }}
+              number: {{ $.Values.service.port }}
           weight: 100
-        {{- if eq .Values.strategy "Canary" }}
+        {{- if eq $.Values.strategy "Canary" }}
         - destination:
-            host: {{ include "bluebird.secondaryServiceName" . }}
+            host: {{ include "bluebird.secondaryServiceName" $ }}
             port:
-              number: {{ .Values.service.port }}
+              number: {{ $.Values.service.port }}
           weight: 0
         {{- end }}
+    {{- end }}
 {{- end }}

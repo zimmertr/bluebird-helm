@@ -335,6 +335,19 @@ ingress:
   # environments set true: their hosts resolve only on the LAN, and the PR
   # containers are where the analyze API is exercised.
   publishFullApi: false
+  # Off when empty, which is the right setting without a Cloudflare Tunnel.
+  # The app keys its rate limits on CF-Connecting-IP when a request carries
+  # it, because Cloudflare overwrites the header and the tunnel is the only
+  # path from the internet. A gateway that is also reachable on another path
+  # (the LAN address a tunnel shares) lets a caller there set the header to
+  # any address (bluebird#631). Set this to an RE2 pattern that matches the
+  # address the gateway sees a tunnel request arrive from, and the gateway
+  # removes CF-Connecting-IP from every request whose peer does not match it.
+  # It is matched against the last X-Forwarded-For hop, which the gateway
+  # writes itself, so it must match one address and nothing longer: no
+  # unbounded `.*`, which would also match a client-typed hop before it.
+  tunnel:
+    peerRegex: ""
 
 experiment:
   enabled: false
