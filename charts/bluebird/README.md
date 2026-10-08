@@ -159,8 +159,6 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `RATE_LIMIT_CLOSURES_BURST` | `30` | Closure requests an idle client may send back-to-back |
 | `CLOSURE_CACHE_TTL_S` | `1800` | How long a fetched Forest Service closure-order snapshot (Regions 3, 4 and 6) counts as current. Closure orders are edited by hand a few times a week, so a refresh every 30 minutes is eleven upstream queries the feed will not have changed between. Past it the snapshot is still served, with a refresh running behind the request |
 | `CLOSURE_RETRY_AFTER_FAILURE_S` | `60` | How long a failed closure refresh suppresses the next attempt. Same contract as the wildfire twin above |
-| `SNODAS_CACHE_TTL_S` | `3600` | How long a held SNODAS snow depth grid counts as current before the pod checks NSIDC for a newer day. NSIDC publishes one file a day, about 13:15 UTC, so a check is one `HEAD` and a download happens once a day. Past it the grid is still served, with the check running behind the request |
-| `SNODAS_RETRY_AFTER_FAILURE_S` | `300` | How long a failed SNODAS fetch suppresses the next attempt. Longer than the wildfire and smoke twins because a fetch is a 5 to 30 MB tar, not a small file |
 | `UPSTREAM_CONCURRENCY_WEATHER` | `4` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses (fairness knob; the weighted budgets are the rate protection) |
 | `UPSTREAM_CONCURRENCY_AQI` | `4` | Same cap for the air-quality API |
 | `UPSTREAM_WEIGHT_PER_MINUTE_WEATHER` | `550` | Per-pod Open-Meteo weather spend in weighted calls per minute (one batched location = one call). The full safe rate on **every** pod, not a per-replica share: one analysis runs end to end on one pod and must cover its whole fan-out. `0` disables pacing, which fails analyses rather than slowing them |
@@ -169,6 +167,12 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `UPSTREAM_CONCURRENCY_OVERPASS` | `2` | In-flight Overpass queries per pod |
 | `NOMINATIM_MIN_INTERVAL_MS` | `3500` | Minimum spacing between Nominatim calls per pod (3 replicas at 3.5s stay under Nominatim's absolute ~1 req/s) |
 | `UPSTREAM_BUDGET_WAIT_S` | `30` | Queue bound on a saturated upstream budget before shedding with a 503 |
+
+`SNODAS_CACHE_TTL_S` and `SNODAS_RETRY_AFTER_FAILURE_S` are no longer declared:
+the app stopped holding a snow depth grid in
+[bluebird#678](https://github.com/zimmertr/bluebird/issues/678). App releases
+before that one still read them, and without these entries they run on their
+baked-in defaults (`3600` and `300`), which are the values this chart declared.
 
 Per-client limits are enforced per pod, so the effective ceiling is roughly
 the value times the current replica count — a range rather than a fixed
