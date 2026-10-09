@@ -6,7 +6,7 @@ type: application
 version: 0.1.0
 # appVersion tracks the default bluebird container image tag when none is supplied.
 # Must be a published zimmertr/bluebird tag — Artifact Hub scans the rendered image.
-appVersion: "0.98.1"
+appVersion: "0.99.0"
 home: https://bluebirdforecast.com
 # From the app repository rather than the site: Artifact Hub's indexer fetches
 # the logo once per chart version from its own egress, and every fetch of the
