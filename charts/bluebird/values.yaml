@@ -87,6 +87,43 @@ extraEnv:
     value: "1800"
   - name: CLOSURE_RETRY_AFTER_FAILURE_S
     value: "60"
+  # Every host the pod calls, and the six the web app calls, as the app reads
+  # them (bluebird#224). Production values; a development stack points them at
+  # the repo's supplier simulator instead.
+  - name: OPEN_METEO_FORECAST_URL
+    value: "https://api.open-meteo.com/v1/forecast"
+  - name: OPEN_METEO_ARCHIVE_URL
+    value: "https://archive-api.open-meteo.com/v1/archive"
+  - name: OPEN_METEO_AIR_QUALITY_URL
+    value: "https://air-quality-api.open-meteo.com/v1/air-quality"
+  - name: OPEN_METEO_CUSTOMER_FORECAST_URL
+    value: "https://customer-api.open-meteo.com/v1/forecast"
+  - name: OPEN_METEO_CUSTOMER_ARCHIVE_URL
+    value: "https://customer-archive-api.open-meteo.com/v1/archive"
+  - name: OPEN_METEO_CUSTOMER_AIR_QUALITY_URL
+    value: "https://customer-air-quality-api.open-meteo.com/v1/air-quality"
+  - name: OVERPASS_URLS
+    value: "https://overpass-api.de/api/interpreter,https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+  - name: NOMINATIM_URL
+    value: "https://nominatim.openstreetmap.org/search"
+  - name: NIFC_URL
+    value: "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query"
+  - name: USFS_ARCGIS_URL
+    value: "https://services1.arcgis.com/gGHDlz6USftL5Pau/arcgis/rest/services/"
+  - name: HMS_URL
+    value: "https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/KML"
+  - name: BROWSER_OPEN_METEO_FORECAST_URL
+    value: "https://api.open-meteo.com/v1/forecast"
+  - name: BROWSER_OPEN_METEO_ARCHIVE_URL
+    value: "https://archive-api.open-meteo.com/v1/archive"
+  - name: BROWSER_OPEN_METEO_AIR_QUALITY_URL
+    value: "https://air-quality-api.open-meteo.com/v1/air-quality"
+  - name: BROWSER_MAP_TILES_URL
+    value: "https://tiles.openfreemap.org"
+  - name: BROWSER_RADAR_URL
+    value: "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0"
+  - name: BROWSER_SNOW_URL
+    value: "https://mapservices.weather.noaa.gov/raster/rest/services/snow/NOHRSC_Snow_Analysis/MapServer"
   # SNODAS_CACHE_TTL_S and SNODAS_RETRY_AFTER_FAILURE_S left with the snow
   # depth grid (bluebird#678). App releases before that one still read them and
   # fall back to their baked-in defaults (3600 and 300) without these entries.

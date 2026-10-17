@@ -167,6 +167,30 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `UPSTREAM_CONCURRENCY_OVERPASS` | `2` | In-flight Overpass queries per pod |
 | `NOMINATIM_MIN_INTERVAL_MS` | `3500` | Minimum spacing between Nominatim calls per pod (3 replicas at 3.5s stay under Nominatim's absolute ~1 req/s) |
 | `UPSTREAM_BUDGET_WAIT_S` | `30` | Queue bound on a saturated upstream budget before shedding with a 503 |
+| `OPEN_METEO_FORECAST_URL` | `https://api.open-meteo.com/v1/forecast` | Where the pod fetches forecasts for an unkeyed API caller |
+| `OPEN_METEO_ARCHIVE_URL` | `https://archive-api.open-meteo.com/v1/archive` | Where the pod fetches reanalysis hours for a window older than the forecast endpoint holds |
+| `OPEN_METEO_AIR_QUALITY_URL` | `https://air-quality-api.open-meteo.com/v1/air-quality` | Where the pod fetches US AQI |
+| `OPEN_METEO_CUSTOMER_FORECAST_URL` | `https://customer-api.open-meteo.com/v1/forecast` | The forecast host for a caller who sends `X-Open-Meteo-Key` |
+| `OPEN_METEO_CUSTOMER_ARCHIVE_URL` | `https://customer-archive-api.open-meteo.com/v1/archive` | The archive host for a keyed caller |
+| `OPEN_METEO_CUSTOMER_AIR_QUALITY_URL` | `https://customer-air-quality-api.open-meteo.com/v1/air-quality` | The air-quality host for a keyed caller |
+| `OVERPASS_URLS` | `https://overpass-api.de/api/interpreter,https://maps.mail.ru/osm/tools/overpass/api/interpreter` | The Overpass mirrors, comma-separated in the order the pod tries them |
+| `NOMINATIM_URL` | `https://nominatim.openstreetmap.org/search` | Where `GET /api/geocode` sends a place search |
+| `NIFC_URL` | `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query` | The wildfire perimeter layer the pod snapshots |
+| `USFS_ARCGIS_URL` | `https://services1.arcgis.com/gGHDlz6USftL5Pau/arcgis/rest/services/` | The ArcGIS base the five closure-order layers hang off |
+| `HMS_URL` | `https://satepsanone.nesdis.noaa.gov/pub/FIRE/web/HMS/Smoke_Polygons/KML` | The folder NOAA's dated smoke KML files sit in |
+| `BROWSER_OPEN_METEO_FORECAST_URL` | `https://api.open-meteo.com/v1/forecast` | Where the web app fetches forecasts, published on `GET /api/config` and allowed by the Content-Security-Policy |
+| `BROWSER_OPEN_METEO_ARCHIVE_URL` | `https://archive-api.open-meteo.com/v1/archive` | Where the web app fetches archive hours |
+| `BROWSER_OPEN_METEO_AIR_QUALITY_URL` | `https://air-quality-api.open-meteo.com/v1/air-quality` | Where the web app fetches US AQI |
+| `BROWSER_MAP_TILES_URL` | `https://tiles.openfreemap.org` | The basemap origin: style, tiles, glyphs and sprites, and the zoom-14 tiles a drawn area reads its peaks and lakes from |
+| `BROWSER_RADAR_URL` | `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0` | The rain radar tiles |
+| `BROWSER_SNOW_URL` | `https://mapservices.weather.noaa.gov/raster/rest/services/snow/NOHRSC_Snow_Analysis/MapServer` | The snow depth map service |
+
+The eleven `*_URL` variables and the six `BROWSER_*` ones are every host the
+pod and the web app call, at their production values
+([bluebird#224](https://github.com/zimmertr/bluebird/issues/224)). The app repo
+ships a simulator that answers all of them, and its compose overlay points the
+pod at it; a cluster has no reason to change them. Older app releases ignore
+them.
 
 `SNODAS_CACHE_TTL_S` and `SNODAS_RETRY_AFTER_FAILURE_S` are no longer declared:
 the app stopped holding a snow depth grid in
