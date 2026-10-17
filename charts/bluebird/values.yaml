@@ -87,6 +87,12 @@ extraEnv:
     value: "1800"
   - name: CLOSURE_RETRY_AFTER_FAILURE_S
     value: "60"
+  - name: RATE_LIMIT_LANDMARKS_PER_MINUTE
+    value: "90"
+  - name: RATE_LIMIT_LANDMARKS_BURST
+    value: "30"
+  - name: LANDMARKS_REFRESH_S
+    value: "86400"
   # SNODAS_CACHE_TTL_S and SNODAS_RETRY_AFTER_FAILURE_S left with the snow
   # depth grid (bluebird#678). App releases before that one still read them and
   # fall back to their baked-in defaults (3600 and 300) without these entries.
@@ -315,6 +321,7 @@ ingress:
     - /api/wildfires
     - /api/smoke
     - /api/closures
+    - /api/landmarks
     - /api/config
   # Published only to a request carrying an Open-Meteo API key in the
   # X-Open-Meteo-Key header (bluebird#317). One analyze request can spend

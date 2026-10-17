@@ -159,6 +159,9 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `RATE_LIMIT_CLOSURES_BURST` | `30` | Closure requests an idle client may send back-to-back |
 | `CLOSURE_CACHE_TTL_S` | `1800` | How long a fetched Forest Service closure-order snapshot (Regions 3, 4 and 6) counts as current. Closure orders are edited by hand a few times a week, so a refresh every 30 minutes is eleven upstream queries the feed will not have changed between. Past it the snapshot is still served, with a refresh running behind the request |
 | `CLOSURE_RETRY_AFTER_FAILURE_S` | `60` | How long a failed closure refresh suppresses the next attempt. Same contract as the wildfire twin above |
+| `RATE_LIMIT_LANDMARKS_PER_MINUTE` | `90` | Per-client-address `GET /api/landmarks` requests per minute; `0` disables. As loose as the wildfire bucket and for the same reason: it answers from the trailhead and crag set the pod already holds, and the map refetches on every pan from zoom 11 |
+| `RATE_LIMIT_LANDMARKS_BURST` | `30` | Landmark requests an idle client may send back-to-back |
+| `LANDMARKS_REFRESH_S` | `86400` | How long a complete worldwide trailhead and crag set stands before the pod asks Overpass again. The set fills at startup, one kind at a time with a doubling backoff on failure, and is served however old it is |
 | `UPSTREAM_CONCURRENCY_WEATHER` | `4` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses (fairness knob; the weighted budgets are the rate protection) |
 | `UPSTREAM_CONCURRENCY_AQI` | `4` | Same cap for the air-quality API |
 | `UPSTREAM_WEIGHT_PER_MINUTE_WEATHER` | `550` | Per-pod Open-Meteo weather spend in weighted calls per minute (one batched location = one call). The full safe rate on **every** pod, not a per-replica share: one analysis runs end to end on one pod and must cover its whole fan-out. `0` disables pacing, which fails analyses rather than slowing them |
