@@ -185,8 +185,8 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `BROWSER_RADAR_URL` | `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0` | The rain radar tiles |
 | `BROWSER_SNOW_URL` | `https://mapservices.weather.noaa.gov/raster/rest/services/snow/NOHRSC_Snow_Analysis/MapServer` | The snow depth map service |
 
-The eleven `*_URL` variables and the six `BROWSER_*` ones are every host the
-pod and the web app call, at their production values
+The seventeen URL variables are every host the pod and the web app call, at
+their production values
 ([bluebird#224](https://github.com/zimmertr/bluebird/issues/224)). The app repo
 ships a simulator that answers all of them, and its compose overlay points the
 pod at it; a cluster has no reason to change them. Older app releases ignore
