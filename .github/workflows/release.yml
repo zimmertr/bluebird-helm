@@ -53,6 +53,12 @@ jobs:
           # Exact: with no version the action installs whatever Helm is
           # newest on the day. Dependabot does not read this input.
           version: v4.3.0
+      # The database subchart (bluebird#760) is fetched at build time rather
+      # than committed: charts/bluebird/charts/ and Chart.lock are ignored.
+      - name: Fetch the chart's dependencies
+        run: |
+          helm repo add cloudnative-pg https://cloudnative-pg.github.io/charts
+          helm dependency build charts/bluebird
       # A chart release is three things made in order: the OCI chart, the git
       # tag, the GitHub release. A guard on the chart alone cannot finish a run
       # that died between the push and the tag, because a re-run sees the chart

@@ -1,0 +1,101 @@
+{{- if and .Values.database.enabled .Values.fill.enabled }}
+{{- /* The planet fill (bluebird#760). Its pods carry a name label of their
+       own, never the app's selector labels, so no Service or PodDisruption
+       Budget of the app's can select them. */}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "bluebird.fullname" . }}-fill
+  namespace: {{ include "bluebird.namespace" . }}
+  labels:
+    helm.sh/chart: {{ include "bluebird.chart" . }}
+    app.kubernetes.io/name: {{ include "bluebird.name" . }}-fill
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/part-of: bluebird
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: {{ .Values.fill.schedule | quote }}
+  # A fill runs for hours and the next day's check must not start a second.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      # A failed fill is tried again by the next day's check rather than at
+      # once. It starts over: the scratch volume goes with the pod, and a
+      # download resumes only within one run.
+      backoffLimit: 0
+      activeDeadlineSeconds: {{ .Values.fill.activeDeadlineSeconds }}
+      # Argo CD does not track Jobs a CronJob creates, so nothing else would
+      # remove a finished one and its scratch volume.
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: {{ include "bluebird.name" . }}-fill
+            app.kubernetes.io/instance: {{ .Release.Name }}
+        spec:
+          restartPolicy: Never
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: fill
+              image: {{ include "bluebird.fillImage" . }}
+              imagePullPolicy: {{ .Values.fill.image.pullPolicy }}
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "bluebird.databaseName" . }}-app
+                      key: uri
+                - name: SCRATCH_DIR
+                  value: /scratch
+                {{- with .Values.fill.extraEnv }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+              {{- with .Values.securityContext }}
+              securityContext:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              resources:
+                {{- toYaml .Values.fill.resources | nindent 16 }}
+              volumeMounts:
+                - name: scratch
+                  mountPath: /scratch
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumes:
+            # Created with the pod and deleted with it, so a fill's 120 GB
+            # never outlives the fill.
+            - name: scratch
+              ephemeral:
+                volumeClaimTemplate:
+                  spec:
+                    accessModes:
+                      - ReadWriteOnce
+                    {{- with .Values.fill.scratch.storageClass }}
+                    storageClassName: {{ . }}
+                    {{- end }}
+                    resources:
+                      requests:
+                        storage: {{ .Values.fill.scratch.size }}
+{{- end }}

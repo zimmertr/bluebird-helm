@@ -78,3 +78,55 @@ from here.
 {{- tpl (default $default .Values.canary.canaryService) . -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+The CloudNativePG cluster's name, as its own chart computes it for the
+`database` alias, so the app can name the Secret and Service it creates.
+*/}}
+{{- define "bluebird.databaseName" -}}
+{{- if .Values.database.fullnameOverride -}}
+{{- .Values.database.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default "database" .Values.database.nameOverride -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The app's database settings (bluebird#760), first-class rather than extraEnv
+so a values file that replaces the extraEnv list cannot drop them. The
+connection string comes from the Secret CloudNativePG writes for the
+cluster's owner, or from `existingSecret` for a release reading another's.
+*/}}
+{{- define "bluebird.databaseEnv" -}}
+{{- if .Values.database.enabled }}
+- name: DATABASE_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "bluebird.databaseName" . }}-app
+      key: uri
+{{- else if .Values.database.existingSecret }}
+- name: DATABASE_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.database.existingSecret }}
+      key: uri
+{{- end }}
+{{- if .Values.database.readOnly }}
+- name: DATABASE_READ_ONLY
+  value: "true"
+{{- end }}
+{{- end -}}
+
+{{/*
+The fill image. Tag defaults to the chart appVersion, the release the app and
+the fill share.
+*/}}
+{{- define "bluebird.fillImage" -}}
+{{- $tag := default .Chart.AppVersion .Values.fill.image.tag -}}
+{{- printf "%s:%s" .Values.fill.image.name $tag -}}
+{{- end -}}
