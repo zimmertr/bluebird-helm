@@ -139,9 +139,9 @@ canary:
 | `database.existingSecret` | `""` | For a release that reads another release's database instead of running its own, like a PR preview: a Secret whose `uri` key is the connection string. Read only while `database.enabled` is `false` |
 | `database.readOnly` | `false` | Read the cache without writing it: no migrations, no refreshes, counters per pod. For a login that can only read |
 | `database.*` | PostgreSQL `17`, PostGIS `3.5`, one instance, `10Gi`, no PDB, no superuser, `max_connections` `200` | Everything else under `database` is the CloudNativePG [`cluster` chart's values](https://github.com/cloudnative-pg/charts/tree/main/charts/cluster), passed through. One instance because it is a cache the planet fill can rebuild. No PDB because with one instance it would block every node drain. 200 connections so ten replicas at `DATABASE_POOL_MAX` and the PR previews fit with room |
-| `fill.enabled` | `true` | Render the planet fill's CronJob while `database.enabled` is `true`. It builds the places table from the OpenStreetMap planet file once per rules version: a daily check that most days exits in seconds, and a fill that downloads about 95 GB, whose time on the cluster is not measured yet |
+| `fill.enabled` | `true` | Render the planet fill's CronJob while `database.enabled` is `true`. It builds the places table from the OpenStreetMap planet file once per rules version: a weekly check that most weeks exits in seconds, and a fill that downloads about 95 GB, whose time on the cluster is not measured yet |
 | `fill.image.name` / `fill.image.tag` | `zimmertr/bluebird-fill` / `""` → chart `appVersion` | The fill image, released with the app at the same version |
-| `fill.schedule` | `17 9 * * *` | When the daily check runs |
+| `fill.schedule` | `17 9 * * 0` | When the weekly check runs |
 | `fill.scratch.size` / `fill.scratch.storageClass` | `120Gi` / `""` (cluster default) | The fill's working space, an ephemeral volume created with its pod and deleted with it. Room for the planet and about 10% more |
 | `fill.resources` | memory `4Gi`/`6Gi`, CPU request `500m` | `osmium getid` peaked at 3.5 GiB on Washington's extract, sized by OpenStreetMap's highest ids rather than the extract, so the planet takes about the same |
 | `fill.activeDeadlineSeconds` | `43200` | A fill still running after 12 hours has stalled |

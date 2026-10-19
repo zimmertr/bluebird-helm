@@ -143,8 +143,10 @@ database:
       size: 10Gi
 
 # Builds the database's places table from the OpenStreetMap planet file, once
-# per rules version (bluebird#760). A daily check: on most days it finds the
-# table current and exits in seconds. A fill downloads the planet (about
+# per rules version (bluebird#760). A weekly check: most weeks it finds the
+# table current and exits in seconds. Weekly because every check creates and
+# deletes the scratch volume, and only a release that changes the rules needs a
+# refill; start one sooner with `kubectl create job --from=cronjob/<release>-fill`. A fill downloads the planet (about
 # 95 GB) to `scratch`, an ephemeral volume deleted with the Job. Its time on
 # the cluster is not measured yet: Washington's extract scales to about 40
 # minutes on a Mac. Rendered only while `database.enabled` is true.
@@ -156,7 +158,7 @@ fill:
     # because both read the same rules.
     tag: ""
     pullPolicy: IfNotPresent
-  schedule: "17 9 * * *"
+  schedule: "17 9 * * 0"
   # Room for the planet and what the fill writes beside it (about 10% more).
   # Empty storageClass uses the cluster's default.
   scratch:

@@ -22,13 +22,13 @@ metadata:
   {{- end }}
 spec:
   schedule: {{ .Values.fill.schedule | quote }}
-  # A fill runs for hours and the next day's check must not start a second.
+  # A fill runs for hours and the next check must not start a second.
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
-      # A failed fill is tried again by the next day's check rather than at
+      # A failed fill is tried again by the next week's check rather than at
       # once. It starts over: the scratch volume goes with the pod, and a
       # download resumes only within one run.
       backoffLimit: 0
