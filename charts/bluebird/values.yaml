@@ -127,11 +127,13 @@ database:
     postgresql: "17"
     postgis: "3.5"
   cluster:
-    # One instance: the database is a cache the planet fill can rebuild, so a
-    # replica would double its disk for nothing a restart does not give back.
-    instances: 1
-    # With one instance a PodDisruptionBudget would block every node drain.
-    enablePDB: false
+    # Three instances, one per worker where it can: since the browser stopped
+    # reading destinations from the map's tiles, every search reads this
+    # database, so a node drain or a failed instance hands over to a standby
+    # in seconds rather than falling back to Overpass while one pod moves.
+    instances: 3
+    # Keeps a drain from taking the primary and a standby at once.
+    enablePDB: true
     # The app connects as the database's owner and nothing needs more, so no
     # superuser password is created to keep safe.
     enableSuperuserAccess: false
