@@ -2,16 +2,18 @@
 
 A Helm chart for [Bluebird](https://github.com/zimmertr/bluebird) — a map-based weather window finder for hikers and mountaineers, live at [bluebirdforecast.com](https://bluebirdforecast.com).
 
-By default the chart deploys a plain **Deployment** + **Service**, so it runs on any standard Kubernetes cluster with no extra operators. **Argo Rollouts** (canary / blue-green) and **Istio** ingress are entirely opt-in.
+By default the chart deploys a **Deployment** + **Service** and a **PostgreSQL** database with PostGIS for the app's shared cache, which the [CloudNativePG](https://cloudnative-pg.io) operator runs, so the operator must already be installed. With `database.enabled=false` the chart runs on any standard Kubernetes cluster with no extra operators, and the app works without the cache. **Argo Rollouts** (canary / blue-green) and **Istio** ingress are entirely opt-in.
 
 Every instance is **release-scoped**: all selectors key on `app.kubernetes.io/instance`, so a stable release and any number of per-PR preview releases can safely coexist in a single namespace.
 
 ## Quick start
 
 ```bash
-helm install bluebird oci://registry-1.docker.io/zimmertr/bluebird-helm --version <version>
+helm install bluebird oci://registry-1.docker.io/zimmertr/bluebird-helm --version <version> --set database.enabled=false
 kubectl port-forward svc/bluebird 8080:8000   # then open http://localhost:8080
 ```
+
+Drop `--set database.enabled=false` on a cluster that runs the CloudNativePG operator.
 
 ## Consuming via GitOps
 
@@ -44,6 +46,10 @@ sources:
         - { name: replicas,   value: "1" }
         - { name: strategy,   value: RollingUpdate }
         - { name: ingress.hosts[0], value: "pr-{{ .number }}.ganymede.sol.milkyway" }
+        # Read the stable release's database rather than run one per PR.
+        - { name: database.enabled,        value: "false" }
+        - { name: database.existingSecret, value: bluebird-database-preview }
+        - { name: database.readOnly,       value: "true" }
 ```
 
 ## Deployment strategy
@@ -92,7 +98,7 @@ canary:
 | `containerPort` | `8000` | Container port |
 | `metrics.port` | `9464` | The app's Prometheus metrics server. One value drives the `METRICS_PORT` env, the `metrics` containerPort, and the port the PodMonitor scrapes, so they cannot drift apart; `0` disables the server and removes the port. Deliberately never added to the Service, so the metrics surface is unreachable through anything that routes Service ports (the gateway included) |
 | `metrics.podMonitor.enabled` | `false` | Render a `monitoring.coreos.com/v1` PodMonitor scraping the pod port directly. Off by default because the prometheus-operator CRDs must exist first. The pods' `role` label (`stable`/`canary`, from the Rollout metadata) is copied onto every series so the two revisions' metrics are separable |
-| `extraEnv` | the app's env surface at its baked-in defaults | Container env vars. Ships fully populated as documentation-that-deploys: every tunable the app reads, at the value it would use anyway — except `METRICS_PORT`, which is first-class as `metrics.port` because two other rendered facts hang off it. Helm replaces lists wholesale, so an override must supply the complete list it wants (see below) |
+| `extraEnv` | the app's env surface at its baked-in defaults | Container env vars. Ships fully populated as documentation-that-deploys: every tunable the app reads, at the value it would use anyway — except `METRICS_PORT`, which is first-class as `metrics.port` because two other rendered facts hang off it, and `DATABASE_URL` and `DATABASE_READ_ONLY`, which come from the `database` values below so an `extraEnv` override cannot drop them. Helm replaces lists wholesale, so an override must supply the complete list it wants (see below) |
 | `resources` | CPU request `250m`, memory `512Mi`/`2Gi` | Container resource requests/limits. Sized from cgroup measurements against production; **no CPU limit** by design, since CFS throttling costs tail latency on a latency-sensitive async service for no benefit. The memory request covers the resident national wildfire-perimeter snapshot the app holds from 0.44 onward (measured 225-253Mi steady across three replicas, 2026-08; the snapshot grows with the national fire count, so the request holds roughly twice that for fire season) |
 | `podSecurityContext` | `runAsNonRoot`, uid/gid `10001`, `seccompProfile: RuntimeDefault` | Pod-level security context, asserting what the image already provides |
 | `securityContext` | `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop: [ALL]` | Container-level security context. The read-only root needs no writable volume: the app writes nothing to disk |
@@ -129,6 +135,17 @@ canary:
 | `ingress.keyedApiPrefixes` | `["/api/analyze"]` | The `/api` prefixes the public gateway forwards **only when the request carries an `X-Open-Meteo-Key` header** (bluebird#317). One analyze request can spend thousands of weighted Open-Meteo calls, and the app sends a keyed one to Open-Meteo's customer hosts, so it spends the caller's quota instead of the pod's. Without the header the request gets the same JSON `404`, before the pod spends anything. A browser's CORS preflight for these prefixes (`OPTIONS` with `Origin` and `Access-Control-Request-Method`) is forwarded without the header, because a preflight cannot carry it, and the pod's CORS middleware answers it without reaching a route. The gateway checks only that the header is non-empty; whether the key works is Open-Meteo's answer, returned as a `401`. An empty list takes the analyze routes off the public gateway, which is the feature's off switch |
 | `ingress.publishFullApi` | `false` | Skip the allowlist and publish the whole `/api` surface. Preview environments set `true`: their hosts resolve only on the LAN |
 | `ingress.tunnel.peerRegex` | `""` (off) | For a gateway that a Cloudflare Tunnel shares with another path, such as its LAN address (bluebird#631). The app keys its rate limits on `CF-Connecting-IP`, which only Cloudflare overwrites, so a caller that reaches the gateway without passing the tunnel could set it to any address. When set, the gateway keeps that header only on a request whose peer matches this RE2 pattern, and removes it from every other request, so the app counts it under the address the gateway saw. The peer is the last `X-Forwarded-For` hop, which the gateway appends itself after anything the client sent; the pattern must match one address and nothing longer (no unbounded `.*`). Each forwarding route then renders as a pair: the usual name for the tunnel, and an `-off-tunnel` twin that removes the header. Rollouts weights only the routes `trafficRouting` names, so list the twins there too if the other path should follow a canary. Leave it empty without a tunnel |
+| `database.enabled` | `true` | Run a PostgreSQL database with PostGIS for the app's shared cache (bluebird#760): every OpenStreetMap peak, lake, trailhead and crag, the overlay snapshots, and the counters behind the rate limits, shared by every pod. Needs the CloudNativePG operator. Off, the app searches Overpass and keeps its snapshots and counters per pod |
+| `database.existingSecret` | `""` | For a release that reads another release's database instead of running its own, like a PR preview: a Secret whose `uri` key is the connection string. Read only while `database.enabled` is `false` |
+| `database.readOnly` | `false` | Read the cache without writing it: no migrations, no refreshes, counters per pod. For a login that can only read |
+| `database.*` | PostgreSQL `17`, PostGIS `3.5`, three instances, `10Gi` each, a PDB, no superuser, `max_connections` `200` | Everything else under `database` is the CloudNativePG [`cluster` chart's values](https://github.com/cloudnative-pg/charts/tree/main/charts/cluster), passed through. Three instances because every search reads it: a drain or a failed instance hands over to a standby in seconds. 200 connections so ten replicas at `DATABASE_POOL_MAX` and the PR previews fit with room |
+| `fill.enabled` | `true` | Render the planet fill's CronJob while `database.enabled` is `true`. It builds the places table from the OpenStreetMap planet file once per rules version: a weekly check that most weeks exits in seconds, and a fill that downloads about 95 GB, whose time on the cluster is not measured yet |
+| `fill.image.name` / `fill.image.tag` | `zimmertr/bluebird-fill` / `""` → chart `appVersion` | The fill image, released with the app at the same version |
+| `fill.schedule` | `17 9 * * 0` | When the weekly check runs |
+| `fill.scratch.size` / `fill.scratch.storageClass` | `120Gi` / `""` (cluster default) | The fill's working space, an ephemeral volume created with its pod and deleted with it. Room for the planet and about 10% more |
+| `fill.resources` | memory `4Gi`/`6Gi`, CPU request `500m` | `osmium getid` peaked at 3.5 GiB on Washington's extract, sized by OpenStreetMap's highest ids rather than the extract, so the planet takes about the same |
+| `fill.activeDeadlineSeconds` | `43200` | A fill still running after 12 hours has stalled |
+| `fill.extraEnv` | `[]` | Extra env for the fill: `PLANET_URL`, `REPLICATION_URL`, or `FORCE_FILL=true` to rebuild a current table |
 | `experiment.enabled` | `false` | Header-matched (`experiment: true`) route |
 | `experiment.host` | `""` | Destination for the experiment route (default: `-canary` service) |
 
@@ -159,13 +176,17 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `RATE_LIMIT_CLOSURES_BURST` | `30` | Closure requests an idle client may send back-to-back |
 | `CLOSURE_CACHE_TTL_S` | `1800` | How long a fetched Forest Service closure-order snapshot (Regions 3, 4 and 6) counts as current. Closure orders are edited by hand a few times a week, so a refresh every 30 minutes is eleven upstream queries the feed will not have changed between. Past it the snapshot is still served, with a refresh running behind the request |
 | `CLOSURE_RETRY_AFTER_FAILURE_S` | `60` | How long a failed closure refresh suppresses the next attempt. Same contract as the wildfire twin above |
+| `RATE_LIMIT_LANDMARKS_PER_MINUTE` | `90` | Per-client-address `GET /api/landmarks` requests per minute; `0` disables. As loose as the wildfire bucket: the map's trailhead and crag markers refetch on every pan, and the database answers them with no upstream |
+| `RATE_LIMIT_LANDMARKS_BURST` | `30` | Landmark requests an idle client may send back-to-back |
+| `DATABASE_POOL_MAX` | `10` | Database connections each pod may hold. A pod opens them only as it needs them; each refresh holds one for as long as it runs |
 | `UPSTREAM_CONCURRENCY_WEATHER` | `4` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses (fairness knob; the weighted budgets are the rate protection) |
 | `UPSTREAM_CONCURRENCY_AQI` | `4` | Same cap for the air-quality API |
-| `UPSTREAM_WEIGHT_PER_MINUTE_WEATHER` | `550` | Per-pod Open-Meteo weather spend in weighted calls per minute (one batched location = one call). The full safe rate on **every** pod, not a per-replica share: one analysis runs end to end on one pod and must cover its whole fan-out. `0` disables pacing, which fails analyses rather than slowing them |
+| `UPSTREAM_WEIGHT_PER_MINUTE_WEATHER` | `550` | Open-Meteo weather spend in weighted calls per minute (one batched location = one call), for the whole deployment while the database is up, since every pod leaves from the one address Open-Meteo counts. Without the database it is each pod's, the full safe rate on **every** pod rather than a per-replica share, because one analysis runs end to end on one pod and must cover its whole fan-out. `0` disables pacing, which fails analyses rather than slowing them |
 | `UPSTREAM_WEIGHT_PER_MINUTE_AQI` | `550` | Same budget for the air-quality API, metered separately |
 | `UPSTREAM_WEIGHT_MAX_WAIT_S` | `120` | A paced batch that would wait longer than this sheds with a 503 |
 | `UPSTREAM_CONCURRENCY_OVERPASS` | `2` | In-flight Overpass queries per pod |
-| `NOMINATIM_MIN_INTERVAL_MS` | `3500` | Minimum spacing between Nominatim calls per pod (3 replicas at 3.5s stay under Nominatim's absolute ~1 req/s) |
+| `NOMINATIM_MIN_INTERVAL_MS` | `1200` | Minimum spacing between Nominatim calls across every pod while the database is up: 50 a minute, under Nominatim's absolute ~1 req/s |
+| `NOMINATIM_POD_MIN_INTERVAL_MS` | `10000` | The same spacing per pod, for when the database is not: 10 replicas at 10s stay under the same ~1 req/s |
 | `UPSTREAM_BUDGET_WAIT_S` | `30` | Queue bound on a saturated upstream budget before shedding with a 503 |
 
 `SNODAS_CACHE_TTL_S` and `SNODAS_RETRY_AFTER_FAILURE_S` are no longer declared:
@@ -174,11 +195,10 @@ the app stopped holding a snow depth grid in
 before that one still read them, and without these entries they run on their
 baked-in defaults (`3600` and `300`), which are the values this chart declared.
 
-Per-client limits are enforced per pod, so the effective ceiling is roughly
-the value times the current replica count — a range rather than a fixed
-number once `autoscaling` is enabled. The Open-Meteo weighted budgets are
-deliberately per-pod ceilings rather than a rationed share, so they do not
-divide by replica count at all. Full semantics live in the app repo:
+Per-client limits, the Nominatim gate and the Open-Meteo weighted budgets
+are shared by every pod while the database is up. Without it they are per
+pod, so the effective ceiling is roughly the value times the current replica
+count, a range rather than a fixed number once `autoscaling` is enabled. Full semantics live in the app repo:
 [docs/CONFIGURATION.md](https://github.com/zimmertr/bluebird/blob/main/docs/CONFIGURATION.md) and
 [docs/TRAFFIC.md](https://github.com/zimmertr/bluebird/blob/main/docs/TRAFFIC.md).
 

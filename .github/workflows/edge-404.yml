@@ -47,6 +47,12 @@ jobs:
           # Exact: with no version the action installs whatever Helm is
           # newest on the day. Dependabot does not read this input.
           version: v4.3.0
+      # The database subchart (bluebird#760) is fetched at build time rather
+      # than committed: charts/bluebird/charts/ and Chart.lock are ignored.
+      - name: Fetch the chart's dependencies
+        run: |
+          helm repo add cloudnative-pg https://cloudnative-pg.github.io/charts
+          helm dependency build charts/bluebird
       - name: Compare the rendered route with the app's record
         env:
           EDGE_RECORD: https://raw.githubusercontent.com/zimmertr/bluebird/main/backend/edge_not_found.json

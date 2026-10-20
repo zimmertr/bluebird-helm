@@ -59,8 +59,13 @@ extraEnv:
     value: "550"
   - name: UPSTREAM_WEIGHT_MAX_WAIT_S
     value: "120"
+  # Shared across every pod while the database is up, and per pod otherwise,
+  # each sized to keep the deployment under Nominatim's 1 a second at ten
+  # replicas (bluebird#760).
   - name: NOMINATIM_MIN_INTERVAL_MS
-    value: "3500"
+    value: "1200"
+  - name: NOMINATIM_POD_MIN_INTERVAL_MS
+    value: "10000"
   - name: UPSTREAM_BUDGET_WAIT_S
     value: "30"
   - name: RATE_LIMIT_WILDFIRES_PER_MINUTE
@@ -87,9 +92,94 @@ extraEnv:
     value: "1800"
   - name: CLOSURE_RETRY_AFTER_FAILURE_S
     value: "60"
+  - name: RATE_LIMIT_LANDMARKS_PER_MINUTE
+    value: "90"
+  - name: RATE_LIMIT_LANDMARKS_BURST
+    value: "30"
+  - name: DATABASE_POOL_MAX
+    value: "10"
   # SNODAS_CACHE_TTL_S and SNODAS_RETRY_AFTER_FAILURE_S left with the snow
   # depth grid (bluebird#678). App releases before that one still read them and
   # fall back to their baked-in defaults (3600 and 300) without these entries.
+# The shared cache (bluebird#760): one PostgreSQL with PostGIS holding every
+# OpenStreetMap peak, lake, trailhead and crag, the wildfire, closure and smoke
+# snapshots, and the counters behind the rate limits, so every pod reads the
+# same copy instead of asking the upstreams for its own. Everything under this
+# key except the three settings below is the CloudNativePG `cluster` chart's
+# own values (https://github.com/cloudnative-pg/charts). The operator must
+# already run in the cluster.
+#
+# The app treats the database as optional: with none, or one still starting,
+# it searches Overpass and keeps its snapshots and counters per pod, as it did
+# before.
+database:
+  enabled: true
+  # For a release that reads another release's database instead of running
+  # its own (PR previews): a Secret in this namespace whose `uri` key is the
+  # connection string. Read only while `enabled` is false.
+  existingSecret: ""
+  # Read the cache without writing it: no migrations, no refreshes, and
+  # counters kept per pod. For a release on `existingSecret` whose login can
+  # only read.
+  readOnly: false
+  type: postgis
+  version:
+    postgresql: "17"
+    postgis: "3.5"
+  cluster:
+    # Three instances, one per worker where it can: since the browser stopped
+    # reading destinations from the map's tiles, every search reads this
+    # database, so a node drain or a failed instance hands over to a standby
+    # in seconds rather than falling back to Overpass while one pod moves.
+    instances: 3
+    # Keeps a drain from taking the primary and a standby at once.
+    enablePDB: true
+    # The app connects as the database's owner and nothing needs more, so no
+    # superuser password is created to keep safe.
+    enableSuperuserAccess: false
+    # Ten replicas at DATABASE_POOL_MAX's ten, plus the PR previews, with room.
+    postgresql:
+      parameters:
+        max_connections: "200"
+    storage:
+      size: 10Gi
+
+# Builds the database's places table from the OpenStreetMap planet file, once
+# per rules version (bluebird#760). A weekly check: most weeks it finds the
+# table current and exits in seconds. Weekly because every check creates and
+# deletes the scratch volume, and only a release that changes the rules needs a
+# refill; start one sooner with `kubectl create job --from=cronjob/<release>-fill`. A fill downloads the planet (about
+# 95 GB) to `scratch`, an ephemeral volume deleted with the Job. Its time on
+# the cluster is not measured yet: Washington's extract scales to about 40
+# minutes on a Mac. Rendered only while `database.enabled` is true.
+fill:
+  enabled: true
+  image:
+    name: zimmertr/bluebird-fill
+    # Empty = chart appVersion: the fill ships with the app, at its version,
+    # because both read the same rules.
+    tag: ""
+    pullPolicy: IfNotPresent
+  schedule: "17 9 * * 0"
+  # Room for the planet and what the fill writes beside it (about 10% more).
+  # Empty storageClass uses the cluster's default.
+  scratch:
+    size: 120Gi
+    storageClass: ""
+  # Measured on Washington's extract, 2026-10-18: `osmium getid` peaked at
+  # 3.5 GiB. Its id sets are sized by OpenStreetMap's highest ids rather than
+  # by the extract, so the planet's peak should be close, but it is not
+  # measured yet.
+  resources:
+    requests:
+      cpu: 500m
+      memory: 4Gi
+    limits:
+      memory: 6Gi
+  # A fill that has not finished in this long has stalled.
+  activeDeadlineSeconds: 43200
+  extraEnv: []
+
 # Measured against live production on 2026-07-30 with cgroup v2 counters
 # (memory.peak and cpu.stat usage_usec, not `kubectl top` -- its decaying ~15s
 # average hides exactly the peaks a limit has to cover). Per pod: idle 2m CPU
@@ -316,6 +406,7 @@ ingress:
     - /api/smoke
     - /api/closures
     - /api/config
+    - /api/landmarks
   # Published only to a request carrying an Open-Meteo API key in the
   # X-Open-Meteo-Key header (bluebird#317). One analyze request can spend
   # thousands of weighted Open-Meteo calls; the app sends a keyed one to

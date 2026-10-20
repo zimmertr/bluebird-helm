@@ -97,6 +97,7 @@ spec:
                    occurrence wins, so an extraEnv override still takes. */}}
             - name: METRICS_PORT
               value: {{ .Values.metrics.port | default 0 | quote }}
+            {{- include "bluebird.databaseEnv" . | nindent 12 }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

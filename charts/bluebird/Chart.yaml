@@ -7,6 +7,17 @@ version: 0.1.0
 # appVersion tracks the default bluebird container image tag when none is supplied.
 # Must be a published zimmertr/bluebird tag — Artifact Hub scans the rendered image.
 appVersion: "0.117.2"
+# The shared cache (bluebird#760): PostgreSQL with PostGIS, run by the
+# CloudNativePG operator from its own upstream chart rather than a database
+# this chart would have to maintain. Off with `database.enabled: false`. The
+# operator is not a dependency: it installs cluster-wide CRDs and webhooks, so
+# it is installed once per cluster, beside this chart.
+dependencies:
+  - name: cluster
+    alias: database
+    version: 0.9.0
+    repository: https://cloudnative-pg.github.io/charts
+    condition: database.enabled
 home: https://bluebirdforecast.com
 # From the app repository rather than the site: Artifact Hub's indexer fetches
 # the logo once per chart version from its own egress, and every fetch of the
@@ -22,6 +33,7 @@ keywords:
   - mountaineering
   - argo-rollouts
   - istio
+  - postgis
 maintainers:
   - name: TJ Zimmerman
 annotations:

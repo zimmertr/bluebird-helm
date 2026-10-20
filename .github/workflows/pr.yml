@@ -25,6 +25,12 @@ jobs:
           # Exact: with no version the action installs whatever Helm is
           # newest on the day. Dependabot does not read this input.
           version: v4.3.0
+      # The database subchart (bluebird#760) is fetched at build time rather
+      # than committed: charts/bluebird/charts/ and Chart.lock are ignored.
+      - name: Fetch the chart's dependencies
+        run: |
+          helm repo add cloudnative-pg https://cloudnative-pg.github.io/charts
+          helm dependency build charts/bluebird
       - name: helm lint
         run: helm lint charts/bluebird
       - name: Render stable scenario (Canary + Istio)
@@ -94,6 +100,12 @@ jobs:
           # Exact: with no version the action installs whatever Helm is
           # newest on the day. Dependabot does not read this input.
           version: v4.3.0
+      # The database subchart (bluebird#760) is fetched at build time rather
+      # than committed: charts/bluebird/charts/ and Chart.lock are ignored.
+      - name: Fetch the chart's dependencies
+        run: |
+          helm repo add cloudnative-pg https://cloudnative-pg.github.io/charts
+          helm dependency build charts/bluebird
       - name: Package & push prerelease
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
