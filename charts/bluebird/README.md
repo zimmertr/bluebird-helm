@@ -143,7 +143,7 @@ canary:
 | `fill.image.name` / `fill.image.tag` | `zimmertr/bluebird-fill` / `""` → chart `appVersion` | The fill image, released with the app at the same version |
 | `fill.schedule` | `17 9 * * 0` | When the weekly check runs |
 | `fill.scratch.size` / `fill.scratch.storageClass` | `120Gi` / `""` (cluster default) | The fill's working space, an ephemeral volume created with its pod and deleted with it. Room for the planet and about 10% more |
-| `fill.resources` | memory `4608Mi`/`6Gi`, CPU request `500m` | Measured on the first planet fill, 2026-10-20: `osmium getid` peaked at 4,431 MiB and the container at 4,489 MiB. The request covers that peak, so a node short of memory does not evict the fill first; the limit leaves 1.5 GiB above it |
+| `fill.resources` | memory `5Gi`/`6Gi`, CPU request `500m` | Measured on the first planet fill, 2026-10-20: `osmium getid` peaked at 4,431 MiB and the container at 4,489 MiB. The request sits 500 MiB over that peak, because `getid` sizes its index by OpenStreetMap's highest ids, which only grow, and a fill over its request is the first a node short of memory evicts; the limit leaves 1 GiB above the request |
 | `fill.activeDeadlineSeconds` | `43200` | A fill still running after 12 hours has stalled |
 | `fill.extraEnv` | `[]` | Extra env for the fill: `PLANET_URL`, `REPLICATION_URL`, or `FORCE_FILL=true` to rebuild a current table |
 | `experiment.enabled` | `false` | Header-matched (`experiment: true`) route |

@@ -169,14 +169,14 @@ fill:
     storageClass: ""
   # Measured on the first planet fill, 2026-10-20: `osmium getid` peaked at
   # 4,431 MiB while the fill's own process held at most 162 MiB, and
-  # `kubectl top` saw the container at 4,489 MiB. The request is the two
-  # processes together rounded up to 4.5 GiB, so the scheduler reserves what
-  # the fill uses and a node short of memory does not evict it first an hour
-  # into its run. The limit leaves 1.5 GiB above that.
+  # `kubectl top` saw the container at 4,489 MiB. The request sits 500 MiB
+  # over that, because `getid` sizes its index by OpenStreetMap's highest
+  # ids, which only grow, and a fill over its request is the first a node
+  # short of memory evicts, an hour into its run. The limit leaves 1 GiB.
   resources:
     requests:
       cpu: 500m
-      memory: 4608Mi
+      memory: 5Gi
     limits:
       memory: 6Gi
   # A fill that has not finished in this long has stalled.
