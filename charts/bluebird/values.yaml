@@ -124,9 +124,22 @@ database:
   readOnly: false
   type: postgis
   version:
-    postgresql: "17"
-    postgis: "3.5"
+    postgresql: "18"
+    postgis: "3.6"
   cluster:
+    # Named outright, because the image the subchart builds from the versions
+    # above, `postgis:18-3.6`, is not published: CloudNativePG's maintained
+    # PostGIS images carry a flavour and an OS in the tag, and the bare
+    # `17-3.5` this ran on until 2026-10 was a frozen legacy build (PostgreSQL
+    # 17.5 on Debian bullseye, last rebuilt 2025-07). `standard`, the smaller
+    # flavour, carries every extension the subchart's bootstrap creates. The
+    # digest pins the build the way the images in bluebird's Dockerfile are
+    # pinned, so a rebuild under the same tag arrives by a PR and never at a
+    # pod restart; it moves by hand, like the subchart's version in
+    # Chart.yaml. A new major is a new cluster, not an upgrade in place: the
+    # operator upgrades only between images on one OS, the data is a cache
+    # the fill rebuilds, and bluebird decision 0198 has the steps.
+    imageName: ghcr.io/cloudnative-pg/postgis:18-3.6-standard-trixie@sha256:6dcf2f3b51411b5f9ba9e59d53ac2d1bc1511ae26086c0d46aa25d955dcd1207
     # Three instances, one per worker where it can: since the browser stopped
     # reading destinations from the map's tiles, every search reads this
     # database, so a node drain or a failed instance hands over to a standby
