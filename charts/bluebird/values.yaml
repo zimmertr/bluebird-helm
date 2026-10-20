@@ -149,9 +149,10 @@ database:
 # table current and exits in seconds. Weekly because every check creates and
 # deletes the scratch volume, and only a release that changes the rules needs a
 # refill; start one sooner with `kubectl create job --from=cronjob/<release>-fill`. A fill downloads the planet (about
-# 95 GB) to `scratch`, an ephemeral volume deleted with the Job. Its time on
-# the cluster is not measured yet: Washington's extract scales to about 40
-# minutes on a Mac. Rendered only while `database.enabled` is true.
+# 95 GB) to `scratch`, an ephemeral volume deleted with the Job. The first one
+# took about 80 minutes to reach the load on a six-core worker, 24 of them the
+# download at 62 MiB/s (2026-10-20). Rendered only while `database.enabled` is
+# true.
 fill:
   enabled: true
   image:
@@ -166,14 +167,16 @@ fill:
   scratch:
     size: 120Gi
     storageClass: ""
-  # Measured on Washington's extract, 2026-10-18: `osmium getid` peaked at
-  # 3.5 GiB. Its id sets are sized by OpenStreetMap's highest ids rather than
-  # by the extract, so the planet's peak should be close, but it is not
-  # measured yet.
+  # Measured on the first planet fill, 2026-10-20: `osmium getid` peaked at
+  # 4,431 MiB while the fill's own process held at most 162 MiB, and
+  # `kubectl top` saw the container at 4,489 MiB. The request is the two
+  # processes together rounded up to 4.5 GiB, so the scheduler reserves what
+  # the fill uses and a node short of memory does not evict it first an hour
+  # into its run. The limit leaves 1.5 GiB above that.
   resources:
     requests:
       cpu: 500m
-      memory: 4Gi
+      memory: 4608Mi
     limits:
       memory: 6Gi
   # A fill that has not finished in this long has stalled.
