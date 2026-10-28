@@ -73,6 +73,7 @@ CASES = [
     Case("GET", "/api/version", "-api-public"),
     Case("GET", "/api/capabilities", "-api-public"),
     Case("GET", "/api/landmarks", "-api-public"),
+    Case("GET", "/api/fire-activity", "-api-public"),
     Case("POST", "/api/analyze", "-api-keyed", KEY),
     Case("POST", "/api/analyze/stream", "-api-keyed", KEY),
     Case("OPTIONS", "/api/analyze", "-api-keyed", PREFLIGHT),

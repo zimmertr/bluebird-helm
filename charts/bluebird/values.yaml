@@ -76,6 +76,10 @@ extraEnv:
     value: "600"
   - name: WILDFIRE_RETRY_AFTER_FAILURE_S
     value: "60"
+  - name: RATE_LIMIT_FIRE_ACTIVITY_PER_MINUTE
+    value: "90"
+  - name: RATE_LIMIT_FIRE_ACTIVITY_BURST
+    value: "30"
   - name: RATE_LIMIT_SMOKE_PER_MINUTE
     value: "90"
   - name: RATE_LIMIT_SMOKE_BURST
@@ -419,6 +423,7 @@ ingress:
     - /api/version
     - /api/geocode
     - /api/wildfires
+    - /api/fire-activity
     - /api/smoke
     - /api/closures
     - /api/config
