@@ -168,6 +168,8 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `RATE_LIMIT_WILDFIRES_BURST` | `30` | Wildfire requests an idle client may send back-to-back |
 | `WILDFIRE_CACHE_TTL_S` | `600` | How long a fetched national wildfire-perimeter snapshot counts as current. Past it the snapshot is still served, with a refresh running behind the request |
 | `WILDFIRE_RETRY_AFTER_FAILURE_S` | `60` | How long a failed refresh suppresses the next attempt, so an upstream outage does not turn every request into its own retry |
+| `RATE_LIMIT_FIRE_ACTIVITY_PER_MINUTE` | `90` | Per-client-address `GET /api/fire-activity` requests per minute; `0` disables. As loose as the wildfire bucket and for the same reason: it answers from a snapshot the pod already holds and reaches no upstream, and the map layer refetches on every pan. A bucket of its own, so a reader with the perimeters and the detections both on spends neither's budget twice |
+| `RATE_LIMIT_FIRE_ACTIVITY_BURST` | `30` | Fire activity requests an idle client may send back-to-back |
 | `RATE_LIMIT_SMOKE_PER_MINUTE` | `90` | Per-client-address `GET /api/smoke` requests per minute; `0` disables. As loose as the wildfire bucket and for the same reason: it answers from a snapshot the pod already holds and reaches no upstream |
 | `RATE_LIMIT_SMOKE_BURST` | `30` | Smoke requests an idle client may send back-to-back |
 | `SMOKE_CACHE_TTL_S` | `1800` | How long a fetched NOAA HMS smoke analysis counts as current. Longer than the wildfire TTL because HMS publishes about twice a day, so this bounds how soon a new pass is seen rather than how stale the answer is. Past it the snapshot is still served, with a refresh running behind the request |
