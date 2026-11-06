@@ -1,6 +1,6 @@
 # 0001. yggdrasil's release module tags the release, then this repo pushes the chart and opens the deploy bumps; PRs publish no chart
 
-- Status: Accepted
+- Status: Accepted. Its `ignore` entry is superseded by 0003.
 - Date: 2026-11-06
 - Decider: TJ, 2026-11-06, on zimmertr/yggdrasil#7 step 5.5: "1: A" and, on the PR charts, "Yup, drop them. Unless they are somehow invovled in pr containers/preview environments"
 - Issues and PRs: zimmertr/yggdrasil#7

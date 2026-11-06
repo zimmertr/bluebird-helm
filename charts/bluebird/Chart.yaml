@@ -5,7 +5,7 @@ type: application
 # version is overwritten at package time by CI (GitVersion). Kept here for local `helm template`.
 version: 0.1.0
 # appVersion tracks the default bluebird container image tag when none is supplied.
-# Must be a published zimmertr/bluebird tag — Artifact Hub scans the rendered image.
+# Must be a published zimmertr/bluebird tag, or a default install can't pull it.
 appVersion: "0.132.24"
 # The shared cache (bluebird#760): PostgreSQL with PostGIS, run by the
 # CloudNativePG operator from its own upstream chart rather than a database
@@ -19,10 +19,6 @@ dependencies:
     repository: https://cloudnative-pg.github.io/charts
     condition: database.enabled
 home: https://bluebirdforecast.com
-# From the app repository rather than the site: Artifact Hub's indexer fetches
-# the logo once per chart version from its own egress, and every fetch of the
-# site's copy has timed out awaiting headers (the catalog has never shown a
-# logo), while the same bytes answer from GitHub at once.
 icon: https://raw.githubusercontent.com/zimmertr/bluebird/main/frontend/public/icon.png
 sources:
   - https://github.com/zimmertr/bluebird
@@ -36,11 +32,3 @@ keywords:
   - postgis
 maintainers:
   - name: TJ Zimmerman
-annotations:
-  artifacthub.io/license: GPL-3.0-only
-  artifacthub.io/prerelease: "false"
-  artifacthub.io/links: |
-    - name: Bluebird application source
-      url: https://github.com/zimmertr/bluebird
-    - name: Live site
-      url: https://bluebirdforecast.com
