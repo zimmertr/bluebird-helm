@@ -1,5 +1,11 @@
 name: Release Chart
 
+# A chart release, in order: yggdrasil's release module reads the version from
+# the squash commit's title (GitVersion, the module's default patterns) and
+# makes the git tag and GitHub release; this repo then pushes the chart under
+# that version, and only then points Kubernetes-Manifests at it. The module's
+# own deploy bumps run straight after its release, before a chart could be
+# pushed, so the bumps live here. Decision record 0001.
 on:
   push:
     branches:
@@ -8,167 +14,122 @@ on:
       - 'charts/**'
       - 'artifacthub-repo.yml'
       - '.github/workflows/release.yml'
-  # Manual runs from main only: every job below checks the ref, because a
-  # dispatch from another branch would publish that branch's chart under a
-  # prerelease version and open the Kubernetes-Manifests bumps with it.
+  # Manual runs from main only: the module tags only on main, and every job
+  # here checks the ref, so a dispatch from another branch publishes nothing.
   workflow_dispatch:
 
-# Serialize chart releases. bump-manifests force-pushes fixed branches in
-# Kubernetes-Manifests, so two concurrent runs would clobber each other's
-# branch and leave the surviving PR pinned to whichever version pushed last.
-# cancel-in-progress stays false so every chart release still lands, just serially.
+# Serialize chart releases, so two quick merges can't race for one version or
+# on the bump branches. cancel-in-progress stays false so every chart release
+# still lands, in order.
 concurrency:
   group: chart-release
   cancel-in-progress: false
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
-  publish:
-    name: Publish OCI chart
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+  release:
+    name: Release
+    uses: zimmertr/yggdrasil/.github/workflows/release.yml@95c4f710c3600dba170ed579c0beabab507011b9 # v0.9.2
     permissions:
-      contents: write  # git tag + GitHub release
+      contents: write # the tag and release
+
+  # The chart for the tag on this commit. A merge that releases nothing leaves
+  # no tag here and pushes nothing. A re-run finds the chart on Docker Hub and
+  # skips the push, so re-running a failed release finishes it.
+  chart:
+    name: Publish OCI chart
+    needs: release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     outputs:
-      semVer: ${{ steps.gitversion.outputs.semVer }}
-      published: ${{ steps.exists.outputs.released == 'false' }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0  # GitVersion needs full history
-          # This checkout keeps its token on disk because the tag step below
-          # pushes with it. Every other checkout drops it.
-
-      - uses: gittools/actions/gitversion/setup@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
-        with:
-          # Exact, not '6.x': the version this computes names the chart,
-          # its tag and the bump branches. Dependabot does not read this.
-          versionSpec: '6.8.2'
-      - id: gitversion
-        uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+          fetch-depth: 0  # the tags
+          persist-credentials: false
+      - id: version
+        run: |
+          TAG=$(git tag --points-at HEAD --list 'v*' --sort=-v:refname | head -n 1)
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          if [ -z "$TAG" ]; then
+            echo "No release tag on this commit; no chart to push." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.version.outputs.version != ''
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           # Exact: with no version the action installs whatever Helm is
           # newest on the day. Dependabot does not read this input.
           version: v4.3.0
-      # The database subchart (bluebird#760) is fetched at build time rather
-      # than committed: charts/bluebird/charts/ and Chart.lock are ignored.
-      - name: Fetch the chart's dependencies
-        run: |
-          helm repo add cloudnative-pg https://cloudnative-pg.github.io/charts
-          helm dependency build charts/bluebird
-      # A chart release is three things made in order: the OCI chart, the git
-      # tag, the GitHub release. A guard on the chart alone cannot finish a run
-      # that died between the push and the tag, because a re-run sees the chart
-      # and skips everything. So each piece is made only when it is missing,
-      # and the run is skipped only when all three exist.
-      - name: Check what this version has already published
-        id: exists
+      - id: exists
+        if: steps.version.outputs.version != ''
         env:
-          VER: ${{ steps.gitversion.outputs.semVer }}
-          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.version.outputs.version }}
         run: |
-          have() { if "$@" >/dev/null 2>&1; then echo true; else echo false; fi; }
-          CHART=$(have helm show chart "oci://registry-1.docker.io/zimmertr/bluebird-helm" --version "$VER")
-          TAG=$(have git ls-remote --exit-code origin "refs/tags/v${VER}")
-          RELEASE=$(have gh release view "v${VER}" --repo "$GITHUB_REPOSITORY")
-          echo "${VER}: chart=${CHART} tag=${TAG} release=${RELEASE}"
-          echo "exists=${CHART}" >> "$GITHUB_OUTPUT"
-          if [ "${CHART}${TAG}${RELEASE}" = truetruetrue ]; then
-            echo "released=true" >> "$GITHUB_OUTPUT"
-            echo "Chart $VER already released; skipping."
+          if helm show chart oci://registry-1.docker.io/zimmertr/bluebird-helm --version "$VER" >/dev/null 2>&1; then
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+            echo "Chart ${VER} is already on Docker Hub."
           else
-            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
           fi
-
-      # appVersion is the chart's default image tag, so it must name a *published*
-      # zimmertr/bluebird tag or Artifact Hub's security scan fails (and default
-      # pulls break). Resolve it from the latest bluebird release at package time
-      # instead of hand-maintaining a value in Chart.yaml that goes stale.
-      - name: Resolve latest bluebird app version
-        id: appver
-        if: steps.exists.outputs.exists == 'false'
+      # appVersion is the chart's default image tag, so it must name a
+      # *published* zimmertr/bluebird tag or Artifact Hub's security scan fails
+      # (and default pulls break). Resolved from the latest bluebird release at
+      # package time instead of a value in Chart.yaml that goes stale.
+      - id: appver
+        if: steps.exists.outputs.pushed == 'false'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           APP_VER="$(gh api repos/zimmertr/bluebird/releases/latest -q .tag_name 2>/dev/null | sed 's/^v//')"
           echo "appVersion=${APP_VER}" >> "$GITHUB_OUTPUT"
           echo "Resolved appVersion: ${APP_VER:-<none; keeping Chart.yaml default>}"
-
-      - name: Package & push chart
-        if: steps.exists.outputs.exists == 'false'
+      # The database subchart (bluebird#760) is fetched at build time rather
+      # than committed: charts/bluebird/charts/ and Chart.lock are ignored.
+      - if: steps.exists.outputs.pushed == 'false'
+        run: |
+          helm repo add cloudnative-pg https://cloudnative-pg.github.io/charts
+          helm dependency build charts/bluebird
+      - if: steps.exists.outputs.pushed == 'false'
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           APP_VER: ${{ steps.appver.outputs.appVersion }}
-          VER: ${{ steps.gitversion.outputs.semVer }}
+          VER: ${{ steps.version.outputs.version }}
         run: |
           echo "$DOCKERHUB_TOKEN" | helm registry login registry-1.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
-          # Only override appVersion when we resolved one, so a missing release
+          # Override appVersion only when one resolved, so a missing release
           # falls back to the Chart.yaml default rather than an empty tag.
-          APPFLAG=""
-          [ -n "$APP_VER" ] && APPFLAG="--app-version $APP_VER"
-          helm package charts/bluebird --version "$VER" $APPFLAG
+          APPFLAG=()
+          [ -n "$APP_VER" ] && APPFLAG=(--app-version "$APP_VER")
+          helm package charts/bluebird --version "$VER" "${APPFLAG[@]}"
           helm push "bluebird-helm-${VER}.tgz" oci://registry-1.docker.io/zimmertr
-
-      # Each half is made only when missing, so a re-run after a failed tag or
-      # release finishes the job. A tag that names another commit stops the
-      # run rather than being moved. A release finished late, behind a newer
-      # one, must not take "Latest" from it.
-      - name: Tag & release
-        if: steps.exists.outputs.released == 'false'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VER: ${{ steps.gitversion.outputs.semVer }}
-        run: |
-          TAG="v${VER}"
-          # The peeled line (^{}) is the commit an annotated tag points at; a
-          # lightweight tag has only the plain line, which is the commit itself.
-          REFS=$(git ls-remote origin "refs/tags/${TAG}" "refs/tags/${TAG}^{}")
-          AT=$(printf '%s\n' "$REFS" | awk '$2 ~ /\^\{\}$/ {print $1; exit}')
-          [ -n "$AT" ] || AT=$(printf '%s\n' "$REFS" | awk 'NF {print $1; exit}')
-          if [ -z "$AT" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag -a "$TAG" -m "Chart ${TAG}"
-            git push origin "$TAG"
-          elif [ "$AT" != "$GITHUB_SHA" ]; then
-            echo "::error::${TAG} already names ${AT}, not ${GITHUB_SHA}."
-            exit 1
-          else
-            echo "${TAG} already names this commit."
-          fi
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "${TAG} already has a release."
-            exit 0
-          fi
-          LATEST=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null || true)
-          LATEST_FLAG=--latest
-          if [ -n "$LATEST" ] && [ "$(printf '%s\n%s\n' "${LATEST#v}" "$VER" | sort -V | tail -1)" != "$VER" ]; then
-            LATEST_FLAG=--latest=false
-          fi
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes --verify-tag "$LATEST_FLAG"
+          echo "Pushed chart ${VER}." >> "$GITHUB_STEP_SUMMARY"
 
   # Artifact Hub reads artifacthub-repo.yml from the OCI repo's "artifacthub.io"
   # tag, not from git, so a change to it does nothing until it is pushed there.
   # It is pushed only when this push changed it, or on a manual run, because it
   # changes rarely.
   #
-  # A job of its own, after publish, so a failed metadata push can never stop a
-  # chart release or the manifest bumps: bump-manifests needs only publish. The
-  # failure still turns the run red, where a continue-on-error step would hide
-  # it behind a green run. The cost of running after the chart push is small:
-  # Artifact Hub reprocesses an OCI repo only when its list of version tags
-  # changes and reads the metadata during that pass, so in the rare case that a
-  # pass lands in the seconds between the two pushes, the new metadata takes
-  # effect at the next chart push instead (PR prereleases count).
+  # A job of its own, after the chart, so a failed metadata push can never stop
+  # a chart release or the manifest bumps. The failure still turns the run red,
+  # where a continue-on-error step would hide it behind a green run. Artifact
+  # Hub reprocesses an OCI repo only when its list of version tags changes and
+  # reads the metadata during that pass, so in the rare case that a pass lands
+  # in the seconds between the two pushes, the new metadata takes effect at the
+  # next chart push instead.
   artifacthub-metadata:
     name: Publish Artifact Hub metadata
     runs-on: ubuntu-latest
-    needs: publish
+    needs: chart
     if: github.ref == 'refs/heads/main'
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -213,111 +174,71 @@ jobs:
             --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
             artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
 
-  # On a new chart release, move Kubernetes-Manifests onto the new chart. Both
-  # consumers — preview (per-PR ephemeral envs) and stable (prod) — land through
-  # self-merging PRs, because Kubernetes-Manifests forbids direct commits to main.
-  # Its "Validate manifests" check renders the affected kustomization, so a chart
-  # version that doesn't resolve fails the PR instead of failing an Argo sync.
+  # Points Kubernetes-Manifests' two consumers at the chart, the preview
+  # ApplicationSet and the stable app, through self-merging PRs, because
+  # Kubernetes-Manifests forbids direct commits to main. Its `Validate
+  # manifests` check renders the change, so a chart version that doesn't
+  # resolve fails the PR instead of an Argo CD sync.
   #
-  # Each consumer gets its own FIXED branch, force-pushed and edited in place, so
-  # rapid chart releases collapse into a single up-to-date PR per consumer.
-  # Version-suffixed branch names used to be the norm here and stranded 6 open PRs
-  # across three chart releases while prod sat on an old chart.
+  # The release module's deploy job, run here after the chart push: yq sets the
+  # one value, create-pull-request opens the PR on a fixed branch or advances
+  # the one already open, then auto-merge is armed (yggdrasil record 0033).
+  # Separate branches, so a preview bump never waits behind a stable one.
   #
-  # Separate branches (not one PR touching both files) so a preview bump is never
-  # blocked behind a prod change, and either can be closed independently.
-  #
-  # Requires a GH_PAT secret with contents+pull-requests write on
-  # zimmertr/Kubernetes-Manifests (same PAT the bluebird app release uses).
+  # GH_PAT has contents and pull-requests write on Kubernetes-Manifests.
   bump-manifests:
-    name: Bump Kubernetes-Manifests
+    name: Bump Kubernetes-Manifests (${{ matrix.name }})
+    needs: chart
+    if: needs.chart.outputs.version != ''
     runs-on: ubuntu-latest
-    needs: publish
-    if: github.ref == 'refs/heads/main' && needs.publish.outputs.published == 'true'
-    env:
-      VER: ${{ needs.publish.outputs.semVer }}
-      GH_TOKEN: ${{ secrets.GH_PAT }}
+    timeout-minutes: 10
+    permissions: {}  # everything here uses GH_PAT
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: preview
+            file: public/bluebird-pr/applicationset.yml
+            set: .spec.template.spec.source.targetRevision
+            branch: chore/bluebird-preview-chart
+            title: 'chore: bump bluebird preview chart'
+          - name: stable
+            file: public/bluebird/kustomization.yml
+            set: (.helmCharts[] | select(.name == "bluebird-helm")).version
+            branch: chore/bluebird-stable-chart
+            title: 'chore: bump bluebird stable chart'
     steps:
-      # A re-run that finishes an older chart release after a newer one
-      # shipped must not move either consumer back onto the older chart.
-      - name: Stop if a newer chart is already released
-        id: newest
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: zimmertr/Kubernetes-Manifests
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: false
+      # -e fails the step when the path matches nothing, which would otherwise
+      # pass for a file already at this version.
+      - uses: mikefarah/yq@504fc38780cc46be8444ea1b72fb55919fc0bfb0 # v4.54.1
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          LATEST=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null || true)
-          if [ -n "$LATEST" ] && [ "$(printf '%s\n%s\n' "${LATEST#v}" "$VER" | sort -V | tail -1)" != "$VER" ]; then
-            echo "::notice::${LATEST} is newer than ${VER}; leaving Kubernetes-Manifests alone."
-            echo "newest=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "newest=true" >> "$GITHUB_OUTPUT"
-          fi
+          VERSION: ${{ needs.chart.outputs.version }}
+          FILE: ${{ matrix.file }}
+          SET: ${{ matrix.set }}
+        with:
+          cmd: yq -i "$SET = strenv(VERSION)" "$FILE" && yq -e "($SET) == strenv(VERSION)" "$FILE"
+      # zizmor would have `gh pr create` instead, which does only the last of
+      # the branch, commit, push and PR (yggdrasil record 0033).
+      - id: pr  # zizmor: ignore[superfluous-actions]
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.GH_PAT }}
+          branch: ${{ matrix.branch }}
+          commit-message: ${{ matrix.title }} to ${{ needs.chart.outputs.version }}
+          title: ${{ matrix.title }} to ${{ needs.chart.outputs.version }}
+          body: |
+            Automated by the bluebird-helm ${{ needs.chart.outputs.version }} release.
 
-      - name: Clone Kubernetes-Manifests
-        if: steps.newest.outputs.newest == 'true'
-        run: |
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/zimmertr/Kubernetes-Manifests.git" km
-          cd km
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: PR — point PR previews at the new chart
-        if: steps.newest.outputs.newest == 'true'
-        working-directory: km
-        run: |
-          BR="chore/bluebird-preview-chart"
-          git checkout -B "$BR" origin/main
-          # Targeted sed (not yq) so the diff is one line — yq would reindent the file.
-          sed -i -E "s|^([[:space:]]*)targetRevision:.*|\1targetRevision: ${VER}|" public/bluebird-pr/applicationset.yml
-          if git diff --quiet; then echo "preview already at ${VER}"; exit 0; fi
-          git commit -am "chore: bump bluebird preview chart to ${VER}"
-          git push -f origin "$BR"
-
-          TITLE="chore: bump bluebird preview chart to ${VER}"
-          BODY="Automated by the bluebird-helm ${VER} release. Points the per-PR preview ApplicationSet at the new chart."
-          PR_NUM="$(gh pr list --head "$BR" --state open --json number -q '.[0].number')"
-          if [ -n "$PR_NUM" ]; then
-            gh pr edit "$PR_NUM" --title "$TITLE" --body "$BODY"
-            echo "Advanced existing PR #${PR_NUM} to ${VER}."
-          else
-            gh pr create --base main --head "$BR" --title "$TITLE" --body "$BODY"
-          fi
-          gh pr merge --auto --squash "$BR" || gh pr merge --squash "$BR"
-
-      - name: PR — roll the stable app onto the new chart
-        if: steps.newest.outputs.newest == 'true'
-        working-directory: km
-        run: |
-          # Fixed branch, no ${VER} suffix: a version-suffixed name makes every
-          # release open a brand-new PR instead of advancing the existing one.
-          BR="chore/bluebird-stable-chart"
-          # Fresh off main every time, so the branch is always exactly one commit
-          # carrying the newest chart version, never a stack of prior bumps.
-          git checkout -B "$BR" origin/main
-          # The chart's helmCharts version is the only `version:` key in this file
-          # (apiVersion doesn't match). Targeted sed keeps the diff to one line.
-          sed -i -E "s|^([[:space:]]*)version:[[:space:]].*|\1version: ${VER}|" public/bluebird/kustomization.yml
-          if git diff --quiet; then echo "stable already at ${VER}"; exit 0; fi
-          git commit -am "chore: bump bluebird stable chart to ${VER}"
-          git push -f origin "$BR"
-
-          TITLE="chore: bump bluebird stable chart to ${VER}"
-          BODY="Automated by the bluebird-helm ${VER} release. Rolls the stable app onto the new chart (triggers the canary rollout)."
-          PR_NUM="$(gh pr list --head "$BR" --state open --json number -q '.[0].number')"
-          if [ -n "$PR_NUM" ]; then
-            # The force-push already advanced the branch. Refresh the title and
-            # body too: both name the version, so an open PR carried across
-            # several chart releases would otherwise advertise a superseded one.
-            gh pr edit "$PR_NUM" --title "$TITLE" --body "$BODY"
-            echo "Advanced existing PR #${PR_NUM} to ${VER}."
-          else
-            gh pr create --base main --head "$BR" --title "$TITLE" --body "$BODY"
-          fi
-
-          # Arm auto-merge so the bump lands without a human. This step used to
-          # stop at PR creation, which left prod chart bumps waiting on someone
-          # noticing the PR. Re-armed unconditionally because GitHub disables
-          # auto-merge on every force-push of the head branch; the || fallback
-          # covers the window where the required check has already gone green,
-          # which makes the PR "clean" and rejects --auto outright.
-          gh pr merge --auto --squash "$BR" || gh pr merge --squash "$BR"
+            - Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.chart.outputs.version }}
+      # Every push to the branch disarms auto-merge, so arm it each time. The
+      # plain merge covers checks already green, where --auto is refused.
+      - if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
+        env:
+          PR: ${{ steps.pr.outputs.pull-request-number }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: gh pr merge "$PR" --repo zimmertr/Kubernetes-Manifests --auto --squash || gh pr merge "$PR" --repo zimmertr/Kubernetes-Manifests --squash
