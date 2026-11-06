@@ -5,8 +5,15 @@ updates:
   # release, and rewrites the SHA and the comment together, so a pin moves
   # only by PR. Actions only: the chart's other update sources are
   # bluebird-helm#301's to decide.
+  #
+  # Each release waits three days before it is proposed, because a patch or
+  # minor merges itself (dependabot-auto-merge.yml). yggdrasil's modules are
+  # pinned here too, and every yggdrasil release bakes three days before its
+  # consumers take it (yggdrasil's record 0023). Security updates don't wait.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
