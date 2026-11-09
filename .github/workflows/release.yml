@@ -150,7 +150,7 @@ jobs:
           persist-credentials: false
       # -e fails the step when the path matches nothing, which would otherwise
       # pass for a file already at this version.
-      - uses: mikefarah/yq@504fc38780cc46be8444ea1b72fb55919fc0bfb0 # v4.54.1
+      - uses: mikefarah/yq@a4330671f17776618660a419ab2531e4f4dc48b6 # v4.54.2
         env:
           VERSION: ${{ needs.chart.outputs.version }}
           FILE: ${{ matrix.file }}
