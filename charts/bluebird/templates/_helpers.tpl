@@ -56,7 +56,7 @@ app.kubernetes.io/part-of: bluebird
 
 {{/*
 Container image reference. Tag defaults to the chart appVersion — a published
-release tag. zimmertr/bluebird never publishes `latest`, so defaulting to it
+release tag. ghcr.io/zimmertr/bluebird never publishes `latest`, so defaulting to it
 breaks pulls.
 */}}
 {{- define "bluebird.image" -}}

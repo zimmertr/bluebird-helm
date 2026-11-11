@@ -1,6 +1,6 @@
 # bluebird-helm
 
-The Helm chart for zimmertr/bluebird (`charts/bluebird`), published as an OCI artifact to Docker Hub. The chart's values are in [`charts/bluebird/README.md`](charts/bluebird/README.md); the full release flow is in zimmertr/bluebird's `docs/CICD.md`.
+The Helm chart for zimmertr/bluebird (`charts/bluebird`), published as an OCI artifact to GHCR. The chart's values are in [`charts/bluebird/README.md`](charts/bluebird/README.md); the full release flow is in zimmertr/bluebird's `docs/CICD.md`.
 
 This repo took a trimmed set of the files a new project starts with (zimmertr/yggdrasil record 0038). When a change here makes a decision, write its record in [`docs/architectural-decision-records/`](docs/architectural-decision-records/README.md); when it needs a `docs/` page, add it in the same PR.
 

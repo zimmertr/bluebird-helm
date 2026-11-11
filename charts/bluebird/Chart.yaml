@@ -5,7 +5,7 @@ type: application
 # version is overwritten at package time by CI (GitVersion). Kept here for local `helm template`.
 version: 0.1.0
 # appVersion tracks the default bluebird container image tag when none is supplied.
-# Must be a published zimmertr/bluebird tag, or a default install can't pull it.
+# Must be a published ghcr.io/zimmertr/bluebird tag, or a default install can't pull it.
 appVersion: "0.132.37"
 # The shared cache (bluebird#760): PostgreSQL with PostGIS, run by the
 # CloudNativePG operator from its own upstream chart rather than a database

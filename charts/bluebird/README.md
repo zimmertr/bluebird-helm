@@ -9,7 +9,7 @@ Every instance is **release-scoped**: all selectors key on `app.kubernetes.io/in
 ## Quick start
 
 ```bash
-helm install bluebird oci://registry-1.docker.io/zimmertr/bluebird-helm --version <version> --set database.enabled=false
+helm install bluebird oci://ghcr.io/zimmertr/bluebird-helm --version <version> --set database.enabled=false
 kubectl port-forward svc/bluebird 8080:8000   # then open http://localhost:8080
 ```
 
@@ -24,7 +24,7 @@ Drop `--set database.enabled=false` on a cluster that runs the CloudNativePG ope
 namespace: bluebird-system
 helmCharts:
   - name: bluebird-helm
-    repo: oci://registry-1.docker.io/zimmertr
+    repo: oci://ghcr.io/zimmertr
     version: <version>
     releaseName: bluebird
     valuesFile: values.yml
@@ -34,14 +34,14 @@ helmCharts:
 
 ```yaml
 sources:
-  - repoURL: oci://registry-1.docker.io/zimmertr/bluebird-helm
+  - repoURL: oci://ghcr.io/zimmertr/bluebird-helm
     chart: bluebird-helm
     targetRevision: <version>
     helm:
       releaseName: bluebird-pr-{{ .number }}
       valueFiles: [$values/public/bluebird/values.yml]
       parameters:
-        - { name: image.name, value: zimmertr/bluebird-pr }
+        - { name: image.name, value: ghcr.io/zimmertr/bluebird-pr }
         - { name: image.tag,  value: "pr-{{ .number }}-{{ .head_sha }}" }
         - { name: replicas,   value: "1" }
         - { name: strategy,   value: RollingUpdate }
@@ -91,7 +91,7 @@ canary:
 | `fullnameOverride` | `""` | Override resource name base (default: release name) |
 | `commonLabels` / `commonAnnotations` | `{}` | Merged onto every resource |
 | `replicas` | `1` | Replica count. **Omitted from the rendered manifest entirely when `autoscaling.enabled`**, so a GitOps controller cannot fight the HPA over `spec.replicas`; `autoscaling.minReplicas` is the floor instead |
-| `image.name` | `zimmertr/bluebird` | Image repository |
+| `image.name` | `ghcr.io/zimmertr/bluebird` | Image repository |
 | `image.tag` | `""` → chart `appVersion` | Image tag (the repo publishes SemVer only, no `latest`) |
 | `image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `imagePullSecrets` | `[]` | Image pull secrets |
@@ -140,7 +140,7 @@ canary:
 | `database.readOnly` | `false` | Read the cache without writing it: no migrations, no refreshes, counters per pod. For a login that can only read |
 | `database.*` | PostgreSQL `17`, PostGIS `3.5`, three instances, `10Gi` each, a PDB, no superuser, `max_connections` `200` | Everything else under `database` is the CloudNativePG [`cluster` chart's values](https://github.com/cloudnative-pg/charts/tree/main/charts/cluster), passed through. Three instances because every search reads it: a drain or a failed instance hands over to a standby in seconds. 200 connections so ten replicas at `DATABASE_POOL_MAX` and the PR previews fit with room |
 | `fill.enabled` | `true` | Render the planet fill's CronJob while `database.enabled` is `true`. It builds the places table from the OpenStreetMap planet file once per rules version: a weekly check that most weeks exits in seconds, and a fill that downloads about 95 GB and took about 80 minutes to reach the load on a six-core worker, 24 of them the download at 62 MiB/s (2026-10-20) |
-| `fill.image.name` / `fill.image.tag` | `zimmertr/bluebird-fill` / `""` → chart `appVersion` | The fill image, released with the app at the same version |
+| `fill.image.name` / `fill.image.tag` | `ghcr.io/zimmertr/bluebird-fill` / `""` → chart `appVersion` | The fill image, released with the app at the same version |
 | `fill.schedule` | `17 9 * * 0` | When the weekly check runs |
 | `fill.scratch.size` / `fill.scratch.storageClass` | `120Gi` / `""` (cluster default) | The fill's working space, an ephemeral volume created with its pod and deleted with it. Room for the planet and about 10% more |
 | `fill.resources` | memory `5Gi`/`6Gi`, CPU request `500m` | Measured on the first planet fill, 2026-10-20: `osmium getid` peaked at 4,431 MiB and the container at 4,489 MiB. The request sits 500 MiB over that peak, because `getid` sizes its index by OpenStreetMap's highest ids, which only grow, and a fill over its request is the first a node short of memory evicts; the limit leaves 1 GiB above the request |
@@ -213,6 +213,6 @@ behavior drift).
 
 The chart's templates are GPL-3.0-only, as the repository's
 [LICENSE](https://github.com/zimmertr/bluebird-helm/blob/main/LICENSE) states.
-The chart is a separate work from the image it installs: `zimmertr/bluebird` is
+The chart is a separate work from the image it installs: `ghcr.io/zimmertr/bluebird` is
 under the [PolyForm Noncommercial License 1.0.0](https://github.com/zimmertr/bluebird/blob/main/LICENSE),
 which permits noncommercial use only.
