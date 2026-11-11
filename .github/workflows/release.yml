@@ -29,12 +29,13 @@ permissions: {}
 jobs:
   release:
     name: Release
-    uses: zimmertr/yggdrasil/.github/workflows/release.yml@95c4f710c3600dba170ed579c0beabab507011b9 # v0.9.2
+    uses: zimmertr/yggdrasil/.github/workflows/release.yml@667ac9372b2be9ed09b67c2da14f6fbd93e2b1b3 # v1.0.0
     permissions:
       contents: write # the tag and release
+      packages: write # asked for by the module's Build & Push, which never runs here: this repo ships no image
 
   # The chart for the tag on this commit. A merge that releases nothing leaves
-  # no tag here and pushes nothing. A re-run finds the chart on Docker Hub and
+  # no tag here and pushes nothing. A re-run finds the chart on GHCR and
   # skips the push, so re-running a failed release finishes it.
   chart:
     name: Publish OCI chart
@@ -44,6 +45,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      packages: write # the chart, pushed to oci://ghcr.io/zimmertr
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -69,14 +71,14 @@ jobs:
         env:
           VER: ${{ steps.version.outputs.version }}
         run: |
-          if helm show chart oci://registry-1.docker.io/zimmertr/bluebird-helm --version "$VER" >/dev/null 2>&1; then
+          if helm show chart oci://ghcr.io/zimmertr/bluebird-helm --version "$VER" >/dev/null 2>&1; then
             echo "pushed=true" >> "$GITHUB_OUTPUT"
-            echo "Chart ${VER} is already on Docker Hub."
+            echo "Chart ${VER} is already on GHCR."
           else
             echo "pushed=false" >> "$GITHUB_OUTPUT"
           fi
       # appVersion is the chart's default image tag, so it must name a
-      # *published* zimmertr/bluebird tag or default pulls break. Resolved from
+      # *published* ghcr.io/zimmertr/bluebird tag or default pulls break. Resolved from
       # the latest bluebird release at package time instead of a value in
       # Chart.yaml that goes stale.
       - id: appver
@@ -95,18 +97,17 @@ jobs:
           helm dependency build charts/bluebird
       - if: steps.exists.outputs.pushed == 'false'
         env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           APP_VER: ${{ steps.appver.outputs.appVersion }}
           VER: ${{ steps.version.outputs.version }}
         run: |
-          echo "$DOCKERHUB_TOKEN" | helm registry login registry-1.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+          echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           # Override appVersion only when one resolved, so a missing release
           # falls back to the Chart.yaml default rather than an empty tag.
           APPFLAG=()
           [ -n "$APP_VER" ] && APPFLAG=(--app-version "$APP_VER")
           helm package charts/bluebird --version "$VER" "${APPFLAG[@]}"
-          helm push "bluebird-helm-${VER}.tgz" oci://registry-1.docker.io/zimmertr
+          helm push "bluebird-helm-${VER}.tgz" oci://ghcr.io/zimmertr
           echo "Pushed chart ${VER}." >> "$GITHUB_STEP_SUMMARY"
 
   # Points Kubernetes-Manifests' two consumers at the chart, the preview

@@ -6,7 +6,7 @@ commonAnnotations: {}
 replicas: 1
 
 image:
-  name: zimmertr/bluebird
+  name: ghcr.io/zimmertr/bluebird
   # Empty = chart appVersion. The repo publishes SemVer tags only, no `latest`.
   tag: ""
   pullPolicy: IfNotPresent
@@ -173,7 +173,7 @@ database:
 fill:
   enabled: true
   image:
-    name: zimmertr/bluebird-fill
+    name: ghcr.io/zimmertr/bluebird-fill
     # Empty = chart appVersion: the fill ships with the app, at its version,
     # because both read the same rules.
     tag: ""

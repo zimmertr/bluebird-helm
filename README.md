@@ -1,9 +1,9 @@
 # bluebird-helm
 
-Helm chart for [Bluebird](https://github.com/zimmertr/bluebird), published as an OCI artifact to Docker Hub.
+Helm chart for [Bluebird](https://github.com/zimmertr/bluebird), published as an OCI artifact to GHCR.
 
 - **Chart:** [`charts/bluebird`](./charts/bluebird) — see its [README](./charts/bluebird/README.md) for values and usage.
-- **OCI location:** `oci://registry-1.docker.io/zimmertr/bluebird-helm`
+- **OCI location:** `oci://ghcr.io/zimmertr/bluebird-helm`
 
 ## Release process
 

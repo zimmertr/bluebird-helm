@@ -1,6 +1,6 @@
 # 0003. The chart is not listed on Artifact Hub
 
-- Status: Accepted. Supersedes the `ignore` entry in 0001.
+- Status: Accepted. Supersedes the `ignore` entry in 0001. Superseded in part by 0004: the chart is on GHCR.
 - Date: 2026-11-06
 - Decider: TJ, 2026-11-06: "Maybe we just stop using ArtifactHub?", then "Yes. Lets completely drop it"
 - Issues and PRs: zimmertr/yggdrasil#7
