@@ -1,11 +1,10 @@
 name: Release Chart
 
-# A chart release, in order: yggdrasil's release module reads the version from
-# the squash commit's title (GitVersion, the module's default patterns) and
-# makes the git tag and GitHub release; this repo then pushes the chart under
-# that version, and only then points Kubernetes-Manifests at it. The module's
-# own deploy bumps run straight after its release, before a chart could be
-# pushed, so the bumps live here. Decision record 0001.
+# A chart release, every step of it a job of yggdrasil's release module: it
+# reads the version from the squash commit's title (GitVersion, the module's
+# default patterns), makes the git tag and GitHub release, pushes the chart
+# under that version, and only then points Kubernetes-Manifests at it.
+# Decision record 0005.
 on:
   push:
     branches:
@@ -13,8 +12,8 @@ on:
     paths:
       - 'charts/**'
       - '.github/workflows/release.yml'
-  # Manual runs from main only: the module tags only on main, and every job
-  # here checks the ref, so a dispatch from another branch publishes nothing.
+  # Manual runs from main only: the module releases only on main, so a
+  # dispatch from another branch publishes nothing.
   workflow_dispatch:
 
 # Serialize chart releases, so two quick merges can't race for one version or
@@ -29,152 +28,34 @@ permissions: {}
 jobs:
   release:
     name: Release
-    uses: zimmertr/yggdrasil/.github/workflows/release.yml@667ac9372b2be9ed09b67c2da14f6fbd93e2b1b3 # v1.0.0
+    uses: zimmertr/yggdrasil/.github/workflows/release.yml@c0b955a587646b10ae5275d6e495f045c6116e66 # v1.1.0
     permissions:
       contents: write # the tag and release
-      packages: write # asked for by the module's Build & Push, which never runs here: this repo ships no image
-
-  # The chart for the tag on this commit. A merge that releases nothing leaves
-  # no tag here and pushes nothing. A re-run finds the chart on GHCR and
-  # skips the push, so re-running a failed release finishes it.
-  chart:
-    name: Publish OCI chart
-    needs: release
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
       packages: write # the chart, pushed to oci://ghcr.io/zimmertr
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0  # the tags
-          persist-credentials: false
-      - id: version
-        run: |
-          TAG=$(git tag --points-at HEAD --list 'v*' --sort=-v:refname | head -n 1)
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-          if [ -z "$TAG" ]; then
-            echo "No release tag on this commit; no chart to push." | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
-      - if: steps.version.outputs.version != ''
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-        with:
-          # Exact: with no version the action installs whatever Helm is
-          # newest on the day. Dependabot does not read this input.
-          version: v4.3.0
-      - id: exists
-        if: steps.version.outputs.version != ''
-        env:
-          VER: ${{ steps.version.outputs.version }}
-        run: |
-          if helm show chart oci://ghcr.io/zimmertr/bluebird-helm --version "$VER" >/dev/null 2>&1; then
-            echo "pushed=true" >> "$GITHUB_OUTPUT"
-            echo "Chart ${VER} is already on GHCR."
-          else
-            echo "pushed=false" >> "$GITHUB_OUTPUT"
-          fi
-      # appVersion is the chart's default image tag, so it must name a
-      # *published* ghcr.io/zimmertr/bluebird tag or default pulls break. Resolved from
-      # the latest bluebird release at package time instead of a value in
-      # Chart.yaml that goes stale.
-      - id: appver
-        if: steps.exists.outputs.pushed == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          APP_VER="$(gh api repos/zimmertr/bluebird/releases/latest -q .tag_name 2>/dev/null | sed 's/^v//')"
-          echo "appVersion=${APP_VER}" >> "$GITHUB_OUTPUT"
-          echo "Resolved appVersion: ${APP_VER:-<none; keeping Chart.yaml default>}"
-      # The database subchart (bluebird#760) is fetched at build time rather
-      # than committed: charts/bluebird/charts/ and Chart.lock are ignored.
-      - if: steps.exists.outputs.pushed == 'false'
-        run: |
-          helm repo add cloudnative-pg https://cloudnative-pg.github.io/charts
-          helm dependency build charts/bluebird
-      - if: steps.exists.outputs.pushed == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          APP_VER: ${{ steps.appver.outputs.appVersion }}
-          VER: ${{ steps.version.outputs.version }}
-        run: |
-          echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          # Override appVersion only when one resolved, so a missing release
-          # falls back to the Chart.yaml default rather than an empty tag.
-          APPFLAG=()
-          [ -n "$APP_VER" ] && APPFLAG=(--app-version "$APP_VER")
-          helm package charts/bluebird --version "$VER" "${APPFLAG[@]}"
-          helm push "bluebird-helm-${VER}.tgz" oci://ghcr.io/zimmertr
-          echo "Pushed chart ${VER}." >> "$GITHUB_STEP_SUMMARY"
-
-  # Points Kubernetes-Manifests' two consumers at the chart, the preview
-  # ApplicationSet and the stable app, through self-merging PRs, because
-  # Kubernetes-Manifests forbids direct commits to main. Its `Validate
-  # manifests` check renders the change, so a chart version that doesn't
-  # resolve fails the PR instead of an Argo CD sync.
-  #
-  # The release module's deploy job, run here after the chart push: yq sets the
-  # one value, create-pull-request opens the PR on a fixed branch or advances
-  # the one already open, then auto-merge is armed (yggdrasil record 0033).
-  # Separate branches, so a preview bump never waits behind a stable one.
-  #
-  # GH_PAT has contents and pull-requests write on Kubernetes-Manifests.
-  bump-manifests:
-    name: Bump Kubernetes-Manifests (${{ matrix.name }})
-    needs: chart
-    if: needs.chart.outputs.version != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions: {}  # everything here uses GH_PAT
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: preview
-            file: public/bluebird-pr/applicationset.yml
-            set: .spec.template.spec.source.targetRevision
-            branch: chore/bluebird-preview-chart
-            title: 'chore: bump bluebird preview chart'
-          - name: stable
-            file: public/bluebird/kustomization.yml
-            set: (.helmCharts[] | select(.name == "bluebird-helm")).version
-            branch: chore/bluebird-stable-chart
-            title: 'chore: bump bluebird stable chart'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: zimmertr/Kubernetes-Manifests
-          token: ${{ secrets.GH_PAT }}
-          persist-credentials: false
-      # -e fails the step when the path matches nothing, which would otherwise
-      # pass for a file already at this version.
-      - uses: mikefarah/yq@504fc38780cc46be8444ea1b72fb55919fc0bfb0 # v4.54.1
-        env:
-          VERSION: ${{ needs.chart.outputs.version }}
-          FILE: ${{ matrix.file }}
-          SET: ${{ matrix.set }}
-        with:
-          cmd: yq -i "$SET = strenv(VERSION)" "$FILE" && yq -e "($SET) == strenv(VERSION)" "$FILE"
-      # zizmor would have `gh pr create` instead, which does only the last of
-      # the branch, commit, push and PR (yggdrasil record 0033).
-      - id: pr  # zizmor: ignore[superfluous-actions]
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
-        with:
-          token: ${{ secrets.GH_PAT }}
-          branch: ${{ matrix.branch }}
-          commit-message: ${{ matrix.title }} to ${{ needs.chart.outputs.version }}
-          title: ${{ matrix.title }} to ${{ needs.chart.outputs.version }}
-          body: |
-            Automated by the bluebird-helm ${{ needs.chart.outputs.version }} release.
-
-            - Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.chart.outputs.version }}
-      # Every push to the branch disarms auto-merge, so arm it each time. The
-      # plain merge covers checks already green, where --auto is refused.
-      - if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
-        env:
-          PR: ${{ steps.pr.outputs.pull-request-number }}
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-        run: gh pr merge "$PR" --repo zimmertr/Kubernetes-Manifests --auto --squash || gh pr merge "$PR" --repo zimmertr/Kubernetes-Manifests --squash
+    with:
+      # No image, so the chart keeps the appVersion in its Chart.yaml: its
+      # default image tag, which Bluebird's release sets by PR, so it always
+      # names a published ghcr.io/zimmertr/bluebird tag. The module fetches
+      # the database subchart (bluebird#760) as it packages: it is not
+      # committed, and charts/bluebird/charts/ and Chart.lock are ignored.
+      charts: '[{"chart": "charts/bluebird"}]'
+      # Kubernetes-Manifests' two consumers of the chart, the preview
+      # ApplicationSet and the stable app, each through a self-merging PR,
+      # because Kubernetes-Manifests forbids direct commits to main. Its
+      # `Validate manifests` check renders the change, so a chart version that
+      # doesn't resolve fails the PR instead of an Argo CD sync. Separate
+      # branches, so a preview bump never waits behind a stable one.
+      deploys: >-
+        [{"repo": "zimmertr/Kubernetes-Manifests",
+          "file": "public/bluebird-pr/applicationset.yml",
+          "set": ".spec.template.spec.source.targetRevision",
+          "branch": "chore/bluebird-preview-chart",
+          "title": "chore: bump bluebird preview chart"},
+         {"repo": "zimmertr/Kubernetes-Manifests",
+          "file": "public/bluebird/kustomization.yml",
+          "set": "(.helmCharts[] | select(.name == \"bluebird-helm\")).version",
+          "branch": "chore/bluebird-stable-chart",
+          "title": "chore: bump bluebird stable chart"}]
+    secrets:
+      # Contents and pull-requests write on Kubernetes-Manifests.
+      deploy-token: ${{ secrets.GH_PAT }}

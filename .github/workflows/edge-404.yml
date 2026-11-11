@@ -7,7 +7,7 @@ name: Edge 404
 # backend/edge_not_found.json; this renders the route and compares its status,
 # parsed body and response headers with that file on bluebird's main.
 #
-# Visible, never blocking. Branch protection requires `Lint & render` alone and
+# Visible, never blocking. Branch protection requires `Chart / Chart` alone and
 # auto-merge waits on required checks only, so a mismatch shows red without
 # stopping a PR, the automated appVersion bump included. Making it required
 # would let an app-side header change stall chart releases.
@@ -35,53 +35,42 @@ permissions:
   contents: read
 
 jobs:
+  # Through yggdrasil's chart module, so the render is by the Helm the release
+  # packages with and the database subchart is fetched the same way. The
+  # comparison and the walk are this repo's own (decision records 0002, 0005).
   edge-404:
     name: Edge 404 matches the app
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-        with:
-          # Exact: with no version the action installs whatever Helm is
-          # newest on the day. Dependabot does not read this input.
-          version: v4.3.0
-      # The database subchart (bluebird#760) is fetched at build time rather
-      # than committed: charts/bluebird/charts/ and Chart.lock are ignored.
-      - name: Fetch the chart's dependencies
-        run: |
-          helm repo add cloudnative-pg https://cloudnative-pg.github.io/charts
-          helm dependency build charts/bluebird
-      - name: Compare the rendered route with the app's record
-        env:
-          EDGE_RECORD: https://raw.githubusercontent.com/zimmertr/bluebird/main/backend/edge_not_found.json
-        run: |
-          if ! curl -fsSL --retry 3 "$EDGE_RECORD" > want-raw.json; then
-            echo "::error::Could not read $EDGE_RECORD, the app's record of what this route must send."
-            exit 1
-          fi
-          helm template bluebird charts/bluebird -n bluebird-system \
-            --set strategy=Canary --set ingress.enabled=true \
-            --set 'ingress.hosts[0]=bluebirdforecast.com' \
-            | yq -o=json 'select(.kind == "VirtualService") | .spec.http[] | select(.name == "bluebird-api-internal")' \
-            > route.json
-          test -s route.json
-          jq -S '{status: .directResponse.status, body: (.directResponse.body.string | fromjson), headers: .headers.response.set}' route.json > got.json
-          jq -S '{status, body, headers}' want-raw.json > want.json
-          if ! diff -u want.json got.json; then
-            echo "::error file=charts/bluebird/templates/virtualservice.yaml::The -api-internal route differs from bluebird's backend/edge_not_found.json (diff above: - is the app, + is the chart). Copy the app's body and headers into the route."
-            exit 1
-          fi
-      # The body above is only half of the edge 404: the other half is which
-      # requests get it. This walks request shapes through the rendered routes,
-      # the encoded slash among them (bluebird#620), and is also a step of the
-      # required Lint & render, which is what blocks a regression; here it
-      # keeps the answer in view on main.
-      - name: Check which requests the route answers
-        run: |
-          helm template bluebird charts/bluebird -n bluebird-system \
-            --set strategy=Canary --set ingress.enabled=true \
-            --set 'ingress.hosts[0]=bluebirdforecast.com' \
-            | yq -o=json 'select(.kind == "VirtualService")' \
-            | python3 .github/scripts/check_edge_routes.py
+    uses: zimmertr/yggdrasil/.github/workflows/chart.yml@c0b955a587646b10ae5275d6e495f045c6116e66 # v1.1.0
+    permissions:
+      contents: read
+    with:
+      chart: charts/bluebird
+      test: |
+        # Compare the rendered route with the app's record.
+        EDGE_RECORD=https://raw.githubusercontent.com/zimmertr/bluebird/main/backend/edge_not_found.json
+        if ! curl -fsSL --retry 3 "$EDGE_RECORD" > want-raw.json; then
+          echo "::error::Could not read $EDGE_RECORD, the app's record of what this route must send."
+          exit 1
+        fi
+        helm template bluebird "$CHART" -n bluebird-system \
+          --set strategy=Canary --set ingress.enabled=true \
+          --set 'ingress.hosts[0]=bluebirdforecast.com' \
+          | yq -o=json 'select(.kind == "VirtualService") | .spec.http[] | select(.name == "bluebird-api-internal")' \
+          > route.json
+        test -s route.json
+        jq -S '{status: .directResponse.status, body: (.directResponse.body.string | fromjson), headers: .headers.response.set}' route.json > got.json
+        jq -S '{status, body, headers}' want-raw.json > want.json
+        if ! diff -u want.json got.json; then
+          echo "::error file=charts/bluebird/templates/virtualservice.yaml::The -api-internal route differs from bluebird's backend/edge_not_found.json (diff above: - is the app, + is the chart). Copy the app's body and headers into the route."
+          exit 1
+        fi
+        # The body above is only half of the edge 404: the other half is which
+        # requests get it. This walks request shapes through the rendered
+        # routes, the encoded slash among them (bluebird#620), and is also
+        # part of the required Chart / Chart, which is what blocks a
+        # regression; here it keeps the answer in view on main.
+        helm template bluebird "$CHART" -n bluebird-system \
+          --set strategy=Canary --set ingress.enabled=true \
+          --set 'ingress.hosts[0]=bluebirdforecast.com' \
+          | yq -o=json 'select(.kind == "VirtualService")' \
+          | python3 .github/scripts/check_edge_routes.py
