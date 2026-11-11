@@ -18,11 +18,11 @@ File issues with the `create-issue` skill from zimmertr/ai-config: the two-sente
 - **The reader**: someone who installs the chart and knows Helm and Kubernetes, but not Bluebird's code.
 - **The gates**: `Chart / Chart`, `PR Title / PR Title` and the three `Lint /` checks pass; `charts/bluebird/README.md` changes with any value; the README changes only to stay accurate.
 - **The constraints**: no secret values in the repo or in logs; a release must not break the stable app or the PR previews in Kubernetes-Manifests; the chart stays GPLv3.
-- **The areas**: `chart` (the templates and values), `ci` (the workflows and Dependabot), `security`.
+- **The areas**: `chart` (the templates and values), `ci` (the workflows and Renovate), `security`.
 
 ## Working in this repo
 
 - Work in a fresh clone in the session's scratchpad, never in TJ's checkout. Branch from the latest `origin/main`.
 - Everything reaches main through a squash-merged PR. Never push to main.
-- CI runs on zimmertr/yggdrasil's `pr-title`, `lint`, `auto-merge`, `chart` and `release` modules, pinned by commit SHA with the version beside it. Dependabot bumps the pin, three days after a release.
+- CI runs on zimmertr/yggdrasil's `pr-title`, `lint`, `chart` and `release` modules, pinned by commit SHA with the version beside it. Renovate bumps the pin as soon as a release ships.
 - Actions are pinned to commit SHAs with the version in a comment. Helm's version is the one yggdrasil's modules install; no workflow here installs it.
