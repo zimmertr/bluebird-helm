@@ -178,6 +178,8 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `RATE_LIMIT_CLOSURES_BURST` | `30` | Closure requests an idle client may send back-to-back |
 | `CLOSURE_CACHE_TTL_S` | `1800` | How long a fetched Forest Service closure-order snapshot (Regions 3, 4 and 6) counts as current. Closure orders are edited by hand a few times a week, so a refresh every 30 minutes is eleven upstream queries the feed will not have changed between. Past it the snapshot is still served, with a refresh running behind the request |
 | `CLOSURE_RETRY_AFTER_FAILURE_S` | `60` | How long a failed closure refresh suppresses the next attempt. Same contract as the wildfire twin above |
+| `SNODAS_CACHE_TTL_S` | `3600` | How long a held SNODAS snow depth grid counts as current before the pod checks NSIDC for a newer day. NSIDC publishes one file a day, about 13:15 UTC, so a check is one `HEAD` and a download happens once a day. Past it the grid is still served, with the check running behind the request |
+| `SNODAS_RETRY_AFTER_FAILURE_S` | `300` | How long a failed SNODAS fetch suppresses the next attempt. Longer than the wildfire and smoke twins because a fetch is a 6 to 48 MB tar, not a small file |
 | `RATE_LIMIT_LANDMARKS_PER_MINUTE` | `90` | Per-client-address `GET /api/landmarks` requests per minute; `0` disables. As loose as the wildfire bucket: the map's trailhead and crag markers refetch on every pan, and the database answers them with no upstream |
 | `RATE_LIMIT_LANDMARKS_BURST` | `30` | Landmark requests an idle client may send back-to-back |
 | `DATABASE_POOL_MAX` | `10` | Database connections each pod may hold. A pod opens them only as it needs them; each refresh holds one for as long as it runs |
@@ -190,12 +192,6 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `NOMINATIM_MIN_INTERVAL_MS` | `1200` | Minimum spacing between Nominatim calls across every pod while the database is up: 50 a minute, under Nominatim's absolute ~1 req/s |
 | `NOMINATIM_POD_MIN_INTERVAL_MS` | `10000` | The same spacing per pod, for when the database is not: 10 replicas at 10s stay under the same ~1 req/s |
 | `UPSTREAM_BUDGET_WAIT_S` | `30` | Queue bound on a saturated upstream budget before shedding with a 503 |
-
-`SNODAS_CACHE_TTL_S` and `SNODAS_RETRY_AFTER_FAILURE_S` are no longer declared:
-the app stopped holding a snow depth grid in
-[bluebird#678](https://github.com/zimmertr/bluebird/issues/678). App releases
-before that one still read them, and without these entries they run on their
-baked-in defaults (`3600` and `300`), which are the values this chart declared.
 
 Per-client limits, the Nominatim gate and the Open-Meteo weighted budgets
 are shared by every pod while the database is up. Without it they are per
