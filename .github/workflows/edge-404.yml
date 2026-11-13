@@ -40,7 +40,7 @@ jobs:
   # comparison and the walk are this repo's own (decision records 0002, 0005).
   edge-404:
     name: Edge 404 matches the app
-    uses: zimmertr/yggdrasil/.github/workflows/chart.yml@5e0beadd180895403b884af94c1fca0d613e32e7 # v1.2.8
+    uses: zimmertr/yggdrasil/.github/workflows/chart.yml@f805e7b874e54e661d8dc8ad528883228bfc567b # v1.2.9
     permissions:
       contents: read
     with:
