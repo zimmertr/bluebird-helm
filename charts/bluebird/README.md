@@ -182,6 +182,8 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `SNODAS_RETRY_AFTER_FAILURE_S` | `300` | How long a failed SNODAS fetch suppresses the next attempt. Longer than the wildfire and smoke twins because a fetch is a 6 to 48 MB tar, not a small file |
 | `RATE_LIMIT_LANDMARKS_PER_MINUTE` | `90` | Per-client-address `GET /api/landmarks` requests per minute; `0` disables. As loose as the wildfire bucket: the map's trailhead and crag markers refetch on every pan, and the database answers them with no upstream |
 | `RATE_LIMIT_LANDMARKS_BURST` | `30` | Landmark requests an idle client may send back-to-back |
+| `RATE_LIMIT_SNOW_DEPTH_PER_MINUTE` | `30` | Per-client-address `POST /api/snow-depth` requests per minute; `0` disables. The app asks once per analysis, and the database answers it with no upstream |
+| `RATE_LIMIT_SNOW_DEPTH_BURST` | `10` | Snow depth requests an idle client may send back-to-back |
 | `DATABASE_POOL_MAX` | `10` | Database connections each pod may hold. A pod opens them only as it needs them; each refresh holds one for as long as it runs |
 | `UPSTREAM_CONCURRENCY_WEATHER` | `4` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses (fairness knob; the weighted budgets are the rate protection) |
 | `UPSTREAM_CONCURRENCY_AQI` | `4` | Same cap for the air-quality API |

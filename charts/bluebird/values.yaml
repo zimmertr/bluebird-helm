@@ -100,6 +100,10 @@ extraEnv:
     value: "90"
   - name: RATE_LIMIT_LANDMARKS_BURST
     value: "30"
+  - name: RATE_LIMIT_SNOW_DEPTH_PER_MINUTE
+    value: "30"
+  - name: RATE_LIMIT_SNOW_DEPTH_BURST
+    value: "10"
   - name: DATABASE_POOL_MAX
     value: "10"
   - name: SNODAS_CACHE_TTL_S
@@ -429,6 +433,7 @@ ingress:
     - /api/closures
     - /api/config
     - /api/landmarks
+    - /api/snow-depth
   # Published only to a request carrying an Open-Meteo API key in the
   # X-Open-Meteo-Key header (bluebird#317). One analyze request can spend
   # thousands of weighted Open-Meteo calls; the app sends a keyed one to
