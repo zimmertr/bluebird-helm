@@ -1,6 +1,6 @@
 # 0002. The edge 404 comparison and the route walk stay this repo's own checks
 
-- Status: Accepted
+- Status: Superseded by 0006
 - Date: 2026-11-06
 - Decider: TJ, 2026-11-06, on zimmertr/yggdrasil#7 step 5.5's plan ("Continue")
 - Issues and PRs: zimmertr/yggdrasil#7, bluebird#565, bluebird#620, bluebird#631

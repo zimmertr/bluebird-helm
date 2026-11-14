@@ -180,11 +180,10 @@ spec:
     # and must say what the pod would: the app's catch-all body with "this
     # path" for the path (a fixed answer cannot repeat the request), the
     # `error` object API callers branch on, and the headers the pod sends on
-    # every response (bluebird#132). The source is backend/edge_not_found.json
-    # in the app repo, written from the app itself; the Edge 404 workflow
-    # (.github/workflows/edge-404.yml) turns red when this route differs from
-    # that file on bluebird's main, so copy a change from there rather than
-    # editing here (bluebird#565).
+    # every response (bluebird#132). Nothing compares it with the app's, so a
+    # change to the app's 404 is copied here by hand; a copy that lags only
+    # gives a caller of an unpublished path a slightly different body
+    # (bluebird#565, record 0006).
     #
     # Every match here, and in the two routes above, compares the path as
     # literal text, and Istio's default path normalization does not decode
