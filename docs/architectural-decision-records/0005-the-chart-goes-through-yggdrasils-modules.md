@@ -1,6 +1,6 @@
 # 0005. The chart is checked, pushed and deployed by yggdrasil's modules, with the `appVersion` in `Chart.yaml`
 
-- Status: Accepted. Supersedes 0001 in part: the `chart` and `bump-manifests` jobs. Superseded in part by 0006: the renders and walks in the `test` input.
+- Status: Accepted. Supersedes 0001 in part: the `chart` and `bump-manifests` jobs. Superseded in part by 0006: the renders and walks in the `test` input, and `edge-404.yml`.
 - Date: 2026-11-11
 - Decider: TJ, 2026-11-11, on zimmertr/yggdrasil#74: "C", the release module pushing the chart itself, then "LGTM" to zimmertr/yggdrasil#82.
 - Issues and PRs: zimmertr/yggdrasil#74, #471

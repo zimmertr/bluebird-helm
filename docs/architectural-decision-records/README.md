@@ -22,8 +22,8 @@ A new record that reverses an old one says `Supersedes NNNN` in its status line.
 | Record | Decision | Date | Status |
 |---|---|---|---|
 | [0001](0001-yggdrasil-tags-the-release-and-this-repo-pushes-the-chart.md) | yggdrasil's release module tags the release, then this repo pushes the chart and opens the deploy bumps; PRs publish no chart | 2026-11-06 | Accepted; superseded in part by 0005 |
-| [0002](0002-the-edge-checks-stay-this-repos-own.md) | The edge 404 comparison and the route walk stay this repo's own checks | 2026-11-06 | Accepted; superseded in part by 0006 |
+| [0002](0002-the-edge-checks-stay-this-repos-own.md) | The edge 404 comparison and the route walk stay this repo's own checks | 2026-11-06 | Superseded by 0006 |
 | [0003](0003-the-chart-is-not-listed-on-artifact-hub.md) | The chart is not listed on Artifact Hub | 2026-11-06 | Accepted; superseded in part by 0004 |
 | [0004](0004-the-chart-ships-from-ghcr.md) | The chart ships from GHCR | 2026-11-11 | Accepted |
 | [0005](0005-the-chart-goes-through-yggdrasils-modules.md) | The chart is checked, pushed and deployed by yggdrasil's modules, with the `appVersion` in `Chart.yaml` | 2026-11-11 | Accepted; supersedes 0001 in part; superseded in part by 0006 |
-| [0006](0006-the-chart-checks-are-helm-unittest-suites.md) | The chart's checks are helm-unittest suites that pin the edge routes, and the request walk moves to Bluebird | 2026-11-13 | Accepted; supersedes 0002 and 0005 in part |
+| [0006](0006-the-chart-checks-are-helm-unittest-suites.md) | The chart's checks are helm-unittest suites that pin the edge routes, and the edge 404 comparison and the route walk are dropped | 2026-11-13 | Accepted; supersedes 0002, and 0005 in part |
