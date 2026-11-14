@@ -1,0 +1,112 @@
+# The public gateway's routes in the stable scenario, with no tunnel, pinned
+# whole (record 0006). The first route whose match accepts a request answers
+# it, so the order and every match decide what the gateway publishes, and a
+# change to any of them fails here until this file says the same. helm-unittest
+# can't send a request through them: which route each request shape lands on,
+# the encoded slash of bluebird#620 among them, is walked outside this suite.
+suite: virtualservice
+templates:
+  - virtualservice.yaml
+release:
+  name: bluebird
+  namespace: bluebird-system
+set:
+  strategy: Canary
+  ingress.enabled: true
+  ingress.hosts: [bluebirdforecast.com]
+tests:
+  - it: keeps its four routes in this order
+    asserts:
+      - lengthEqual:
+          path: spec.http
+          count: 4
+      - equal:
+          path: spec.http[0].name
+          value: bluebird-api-public
+      - equal:
+          path: spec.http[1].name
+          value: bluebird-api-keyed
+      - equal:
+          path: spec.http[2].name
+          value: bluebird-api-internal
+      - equal:
+          path: spec.http[3].name
+          value: bluebird-stable
+
+  - it: forwards the public /api prefixes from the public gateway
+    asserts:
+      - equal:
+          path: spec.http[0]
+          value:
+            name: bluebird-api-public
+            match:
+              - {uri: {prefix: /api/destinations}, gateways: [bluebird]}
+              - {uri: {prefix: /api/capabilities}, gateways: [bluebird]}
+              - {uri: {prefix: /api/version}, gateways: [bluebird]}
+              - {uri: {prefix: /api/geocode}, gateways: [bluebird]}
+              - {uri: {prefix: /api/wildfires}, gateways: [bluebird]}
+              - {uri: {prefix: /api/fire-activity}, gateways: [bluebird]}
+              - {uri: {prefix: /api/smoke}, gateways: [bluebird]}
+              - {uri: {prefix: /api/closures}, gateways: [bluebird]}
+              - {uri: {prefix: /api/config}, gateways: [bluebird]}
+              - {uri: {prefix: /api/landmarks}, gateways: [bluebird]}
+              - {uri: {prefix: /api/snow-depth}, gateways: [bluebird]}
+            route: &canary-pair
+              - destination: {host: bluebird, port: {number: 8000}}
+                weight: 100
+              - destination: {host: bluebird-canary, port: {number: 8000}}
+                weight: 0
+
+  # bluebird#317: an analyze request with a caller's key, or its CORS preflight.
+  - it: forwards /api/analyze only with a key or as a preflight
+    asserts:
+      - equal:
+          path: spec.http[1]
+          value:
+            name: bluebird-api-keyed
+            match:
+              - uri: {prefix: /api/analyze}
+                headers:
+                  x-open-meteo-key: {regex: .+}
+                gateways: [bluebird]
+              - uri: {prefix: /api/analyze}
+                method: {exact: OPTIONS}
+                headers:
+                  origin: {regex: .+}
+                  access-control-request-method: {regex: .+}
+                gateways: [bluebird]
+            route: *canary-pair
+
+  # The response headers are left to the Edge 404 workflow, which compares
+  # them with bluebird's backend/edge_not_found.json (record 0002).
+  - it: answers every other /api path with the app's 404, the encoded slash included
+    asserts:
+      - equal:
+          path: spec.http[2].match
+          value:
+            - {uri: {prefix: /api/}, gateways: [bluebird]}
+            - {uri: {exact: /api}, gateways: [bluebird]}
+            - {uri: {regex: '(?i)/api%2f.*'}, gateways: [bluebird]}
+      - equal:
+          path: spec.http[2].directResponse
+          value:
+            status: 404
+            body:
+              string: '{"detail":"No API endpoint at this path. See /docs for the full API reference, or /openapi.json for the machine-readable schema.","error":{"code":"not_found","retryable":false}}'
+      - notExists:
+          path: spec.http[2].route
+
+  - it: sends everything else to the stable route
+    asserts:
+      - equal:
+          path: spec.http[3]
+          value:
+            name: bluebird-stable
+            route: *canary-pair
+
+  # bluebird#631: the strip is opt-in, so without a tunnel the app still sees
+  # CF-Connecting-IP on every route.
+  - it: removes CF-Connecting-IP from no route
+    asserts:
+      - notExists:
+          path: spec.http[*].headers.request

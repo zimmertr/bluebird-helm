@@ -13,46 +13,16 @@ permissions:
   contents: read
 
 jobs:
-  # yggdrasil's chart module: the database subchart fetched, `helm lint`, and a
+  # yggdrasil's chart module: the database subchart fetched, `helm lint`, a
   # render with the defaults (the portable scenario: a plain Deployment, no
-  # add-ons), on the Helm version the release packages with. Then this repo's
-  # own renders below. The required check is `Chart / Chart`. Decision record
-  # 0005.
+  # add-ons), on the Helm version the release packages with, then the
+  # helm-unittest suites in charts/bluebird/tests/: the stable and preview
+  # scenarios, and the edge routes pinned with and without the tunnel. The
+  # required check is `Chart / Chart`. Decision records 0005 and 0006.
   chart:
     name: Chart
-    uses: zimmertr/yggdrasil/.github/workflows/chart.yml@f805e7b874e54e661d8dc8ad528883228bfc567b # v1.2.9
+    uses: zimmertr/yggdrasil/.github/workflows/chart.yml@b662606e82d2291ac62c0ea9b28d3990f575f980 # v1.3.0
     permissions:
       contents: read
     with:
       chart: charts/bluebird
-      test: |
-        # The stable scenario (Canary + Istio).
-        helm template bluebird "$CHART" -n bluebird-system \
-          --set strategy=Canary --set ingress.enabled=true \
-          --set 'ingress.hosts[0]=bluebirdforecast.com' \
-          --set ingress.tls.enabled=true --set ingress.tls.credentialName=bluebird \
-          --set ingress.httpsRedirect=true >/dev/null
-        # Which route each request shape lands on, through the public gateway:
-        # the encoded slash (bluebird#620) and the shapes beside it.
-        helm template bluebird "$CHART" -n bluebird-system \
-          --set strategy=Canary --set ingress.enabled=true \
-          --set 'ingress.hosts[0]=bluebirdforecast.com' \
-          | yq -o=json 'select(.kind == "VirtualService")' \
-          | python3 .github/scripts/check_edge_routes.py
-        # The same shapes with the tunnel strip on (bluebird#631): from the
-        # tunnel's peer each keeps CF-Connecting-IP on its usual route, and
-        # from any LAN peer it lands on that route's -off-tunnel twin, which
-        # removes the header. The walk above is the other half: off, nothing
-        # removes it.
-        helm template bluebird "$CHART" -n bluebird-system \
-          --set strategy=Canary --set ingress.enabled=true \
-          --set 'ingress.hosts[0]=bluebirdforecast.com' \
-          -f .github/scripts/tunnel_values.yaml \
-          | yq -o=json 'select(.kind == "VirtualService")' \
-          | python3 .github/scripts/check_edge_routes.py --tunnel
-        # The preview scenario (Deployment + Istio).
-        helm template bluebird-pr-1 "$CHART" -n bluebird-system \
-          --set image.name=ghcr.io/zimmertr/bluebird-pr \
-          --set image.tag=pr-1-deadbeef --set replicas=1 \
-          --set ingress.enabled=true \
-          --set 'ingress.hosts[0]=pr-1.ganymede.sol.milkyway' >/dev/null

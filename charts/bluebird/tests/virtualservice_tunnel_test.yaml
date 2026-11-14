@@ -1,0 +1,182 @@
+# The same routes with the tunnel strip on (bluebird#631), pinned whole
+# (record 0006). Each forwarding route comes as a pair: the first keeps its
+# name and matches only a request whose last X-Forwarded-For hop is the
+# tunnel's peer, and its -off-tunnel twin matches the same paths from any
+# other peer and removes CF-Connecting-IP. The 404 route has no twin: it never
+# reaches the pod.
+suite: virtualservice with the tunnel
+templates:
+  - virtualservice.yaml
+release:
+  name: bluebird
+  namespace: bluebird-system
+set:
+  strategy: Canary
+  ingress.enabled: true
+  ingress.hosts: [bluebirdforecast.com]
+  # The shape a flannel cluster needs: a cloudflared pod in 10.244.0.0/16, but
+  # not a node's .0 (flannel.1) or .1 (cni0) address, which kube-proxy gives a
+  # LAN client on its way to the gateway.
+  ingress.tunnel.peerRegex: '10\.244\.\d+\.(?:[2-9]|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])'
+tests:
+  - it: keeps its seven routes in this order
+    asserts:
+      - lengthEqual:
+          path: spec.http
+          count: 7
+      - equal:
+          path: spec.http[0].name
+          value: bluebird-api-public
+      - equal:
+          path: spec.http[1].name
+          value: bluebird-api-public-off-tunnel
+      - equal:
+          path: spec.http[2].name
+          value: bluebird-api-keyed
+      - equal:
+          path: spec.http[3].name
+          value: bluebird-api-keyed-off-tunnel
+      - equal:
+          path: spec.http[4].name
+          value: bluebird-api-internal
+      - equal:
+          path: spec.http[5].name
+          value: bluebird-stable
+      - equal:
+          path: spec.http[6].name
+          value: bluebird-stable-off-tunnel
+
+  # The gateway appends the peer it saw as the last hop, after anything the
+  # client sent, so the match tests that hop alone.
+  - it: forwards the public /api prefixes from the tunnel with the header kept
+    asserts:
+      - equal:
+          path: spec.http[0]
+          value:
+            name: bluebird-api-public
+            match:
+              - uri: {prefix: /api/destinations}
+                headers:
+                  x-forwarded-for: &tunnel-peer
+                    regex: '(?:.*,)?\s*(?:10\.244\.\d+\.(?:[2-9]|[1-9]\d|1\d\d|2[0-4]\d|25[0-5]))'
+                gateways: [bluebird]
+              - {uri: {prefix: /api/capabilities}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
+              - {uri: {prefix: /api/version}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
+              - {uri: {prefix: /api/geocode}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
+              - {uri: {prefix: /api/wildfires}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
+              - {uri: {prefix: /api/fire-activity}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
+              - {uri: {prefix: /api/smoke}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
+              - {uri: {prefix: /api/closures}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
+              - {uri: {prefix: /api/config}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
+              - {uri: {prefix: /api/landmarks}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
+              - {uri: {prefix: /api/snow-depth}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
+            route: &canary-pair
+              - destination: {host: bluebird, port: {number: 8000}}
+                weight: 100
+              - destination: {host: bluebird-canary, port: {number: 8000}}
+                weight: 0
+
+  - it: forwards the public /api prefixes from any other peer with the header removed
+    asserts:
+      - equal:
+          path: spec.http[1]
+          value:
+            name: bluebird-api-public-off-tunnel
+            match:
+              - {uri: {prefix: /api/destinations}, gateways: [bluebird]}
+              - {uri: {prefix: /api/capabilities}, gateways: [bluebird]}
+              - {uri: {prefix: /api/version}, gateways: [bluebird]}
+              - {uri: {prefix: /api/geocode}, gateways: [bluebird]}
+              - {uri: {prefix: /api/wildfires}, gateways: [bluebird]}
+              - {uri: {prefix: /api/fire-activity}, gateways: [bluebird]}
+              - {uri: {prefix: /api/smoke}, gateways: [bluebird]}
+              - {uri: {prefix: /api/closures}, gateways: [bluebird]}
+              - {uri: {prefix: /api/config}, gateways: [bluebird]}
+              - {uri: {prefix: /api/landmarks}, gateways: [bluebird]}
+              - {uri: {prefix: /api/snow-depth}, gateways: [bluebird]}
+            headers: &strip
+              request:
+                remove: [cf-connecting-ip]
+            route: *canary-pair
+
+  - it: forwards a keyed /api/analyze or its preflight from the tunnel with the header kept
+    asserts:
+      - equal:
+          path: spec.http[2]
+          value:
+            name: bluebird-api-keyed
+            match:
+              - uri: {prefix: /api/analyze}
+                headers:
+                  x-open-meteo-key: {regex: .+}
+                  x-forwarded-for: *tunnel-peer
+                gateways: [bluebird]
+              - uri: {prefix: /api/analyze}
+                method: {exact: OPTIONS}
+                headers:
+                  origin: {regex: .+}
+                  access-control-request-method: {regex: .+}
+                  x-forwarded-for: *tunnel-peer
+                gateways: [bluebird]
+            route: *canary-pair
+
+  - it: forwards a keyed /api/analyze or its preflight from any other peer with the header removed
+    asserts:
+      - equal:
+          path: spec.http[3]
+          value:
+            name: bluebird-api-keyed-off-tunnel
+            match:
+              - uri: {prefix: /api/analyze}
+                headers:
+                  x-open-meteo-key: {regex: .+}
+                gateways: [bluebird]
+              - uri: {prefix: /api/analyze}
+                method: {exact: OPTIONS}
+                headers:
+                  origin: {regex: .+}
+                  access-control-request-method: {regex: .+}
+                gateways: [bluebird]
+            headers: *strip
+            route: *canary-pair
+
+  # The same as without the tunnel: whatever the peer, the gateway answers.
+  - it: answers every other /api path with the app's 404 from any peer
+    asserts:
+      - equal:
+          path: spec.http[4].match
+          value:
+            - {uri: {prefix: /api/}, gateways: [bluebird]}
+            - {uri: {exact: /api}, gateways: [bluebird]}
+            - {uri: {regex: '(?i)/api%2f.*'}, gateways: [bluebird]}
+      - equal:
+          path: spec.http[4].directResponse
+          value:
+            status: 404
+            body:
+              string: '{"detail":"No API endpoint at this path. See /docs for the full API reference, or /openapi.json for the machine-readable schema.","error":{"code":"not_found","retryable":false}}'
+      - notExists:
+          path: spec.http[4].route
+      - notExists:
+          path: spec.http[4].headers.request
+
+  - it: sends everything else from the tunnel to the stable route with the header kept
+    asserts:
+      - equal:
+          path: spec.http[5]
+          value:
+            name: bluebird-stable
+            match:
+              - headers:
+                  x-forwarded-for: *tunnel-peer
+                gateways: [bluebird]
+            route: *canary-pair
+
+  - it: sends everything else from any other peer to the stable route with the header removed
+    asserts:
+      - equal:
+          path: spec.http[6]
+          value:
+            name: bluebird-stable-off-tunnel
+            headers: *strip
+            route: *canary-pair

@@ -1,0 +1,93 @@
+# The two ways Kubernetes-Manifests installs the chart, beyond the module's
+# render with the defaults. Each test renders the whole chart, the database
+# subchart included, so a template that fails in either scenario fails here.
+suite: scenarios
+tests:
+  # The stable app: Canary, Istio, TLS and the HTTPS redirect.
+  - it: renders the stable scenario
+    release:
+      name: bluebird
+      namespace: bluebird-system
+    set:
+      strategy: Canary
+      ingress.enabled: true
+      ingress.hosts: [bluebirdforecast.com]
+      ingress.tls.enabled: true
+      ingress.tls.credentialName: bluebird
+      ingress.httpsRedirect: true
+    asserts:
+      - isKind:
+          of: Gateway
+        template: gateway.yaml
+      - equal:
+          path: spec.servers[0].tls
+          value: {httpsRedirect: true}
+        template: gateway.yaml
+      - equal:
+          path: spec.servers[1]
+          value:
+            hosts: [bluebirdforecast.com]
+            port: {name: https, number: 443, protocol: HTTPS}
+            tls: {mode: SIMPLE, credentialName: bluebird}
+        template: gateway.yaml
+      - isKind:
+          of: VirtualService
+        template: virtualservice.yaml
+      - equal:
+          path: spec.hosts
+          value: [bluebirdforecast.com, bluebird.bluebird-system.svc.cluster.local]
+        template: virtualservice.yaml
+      - equal:
+          path: spec.gateways
+          value: [mesh, bluebird]
+        template: virtualservice.yaml
+
+  # A PR preview: its own release beside the stable one in the same
+  # namespace, a plain Deployment of the PR's image, on a LAN host.
+  - it: renders the preview scenario
+    release:
+      name: bluebird-pr-1
+      namespace: bluebird-system
+    set:
+      image.name: ghcr.io/zimmertr/bluebird-pr
+      image.tag: pr-1-deadbeef
+      replicas: 1
+      ingress.enabled: true
+      ingress.hosts: [pr-1.ganymede.sol.milkyway]
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: workload.yaml
+      - isKind:
+          of: Deployment
+        template: workload.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/zimmertr/bluebird-pr:pr-1-deadbeef
+        template: workload.yaml
+      - equal:
+          path: spec.replicas
+          value: 1
+        template: workload.yaml
+      # The instance label keeps the preview's pods apart from stable's.
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app.kubernetes.io/name: bluebird
+            app.kubernetes.io/instance: bluebird-pr-1
+        template: workload.yaml
+      - equal:
+          path: spec.servers[0].hosts
+          value: [pr-1.ganymede.sol.milkyway]
+        template: gateway.yaml
+      - equal:
+          path: spec.hosts
+          value: [pr-1.ganymede.sol.milkyway, bluebird-pr-1.bluebird-system.svc.cluster.local]
+        template: virtualservice.yaml
+      # No Canary, so the preview's own Service takes all of it.
+      - equal:
+          path: spec.http[3].route
+          value:
+            - destination: {host: bluebird-pr-1, port: {number: 8000}}
+              weight: 100
+        template: virtualservice.yaml

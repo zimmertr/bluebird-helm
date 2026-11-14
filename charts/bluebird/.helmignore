@@ -8,3 +8,5 @@
 *.orig
 .idea/
 .vscode/
+# The helm-unittest suites stay out of the packaged chart.
+tests/
