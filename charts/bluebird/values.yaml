@@ -100,11 +100,16 @@ extraEnv:
     value: "90"
   - name: RATE_LIMIT_LANDMARKS_BURST
     value: "30"
+  - name: RATE_LIMIT_SNOW_DEPTH_PER_MINUTE
+    value: "30"
+  - name: RATE_LIMIT_SNOW_DEPTH_BURST
+    value: "10"
   - name: DATABASE_POOL_MAX
     value: "10"
-  # SNODAS_CACHE_TTL_S and SNODAS_RETRY_AFTER_FAILURE_S left with the snow
-  # depth grid (bluebird#678). App releases before that one still read them and
-  # fall back to their baked-in defaults (3600 and 300) without these entries.
+  - name: SNODAS_CACHE_TTL_S
+    value: "3600"
+  - name: SNODAS_RETRY_AFTER_FAILURE_S
+    value: "300"
 # The shared cache (bluebird#760): one PostgreSQL with PostGIS holding every
 # OpenStreetMap peak, lake, trailhead and crag, the wildfire, closure and smoke
 # snapshots, and the counters behind the rate limits, so every pod reads the
@@ -226,9 +231,9 @@ fill:
 # pod's whole life, plus a transient copy while a refresh decodes the next
 # day's file. Fetched once at start and then checked hourly. Same rule as the
 # wildfire snapshot: resident cost belongs in the request.
-# App releases after bluebird#678 hold no such grid. The request did not move
-# with it, because the 512Mi below was set for the wildfire snapshot before the
-# grid arrived.
+# Releases from bluebird#678 to bluebird#849 held no such grid, and the request
+# did not move for them, because the 512Mi below was set for the wildfire
+# snapshot before the grid arrived.
 #
 # The smoke snapshot added in bluebird#121 does not move this. It is one day's
 # NOAA HMS analysis held as prebuilt response text: measured 2026-08-04 at
@@ -428,6 +433,7 @@ ingress:
     - /api/closures
     - /api/config
     - /api/landmarks
+    - /api/snow-depth
   # Published only to a request carrying an Open-Meteo API key in the
   # X-Open-Meteo-Key header (bluebird#317). One analyze request can spend
   # thousands of weighted Open-Meteo calls; the app sends a keyed one to
