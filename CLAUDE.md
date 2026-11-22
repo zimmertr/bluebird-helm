@@ -16,7 +16,7 @@ This repo took a trimmed set of the files a new project starts with (zimmertr/yg
 File issues with the `create-issue` skill from zimmertr/ai-config: the two-sentence summary, the six sections, the hemingway and humanizer passes, one priority, one type, the area labels and the session label. The skill reads the four things below from this section.
 
 - **The reader**: someone who installs the chart and knows Helm and Kubernetes, but not Bluebird's code.
-- **The gates**: `Chart / Chart`, `PR Title / PR Title` and the three `Lint /` checks pass; `charts/bluebird/README.md` changes with any value; the README changes only to stay accurate.
+- **The gates**: `Chart / Chart`, `PR Title / PR Title` and the five `Lint /` checks pass; `charts/bluebird/README.md` changes with any value; the README changes only to stay accurate.
 - **The constraints**: no secret values in the repo or in logs; a release must not break the stable app or the PR previews in Kubernetes-Manifests; the chart stays GPLv3.
 - **The areas**: `chart` (the templates and values), `ci` (the workflows and Renovate), `security`.
 
