@@ -21,7 +21,7 @@ jobs:
   # required check is `Chart / Chart`. Decision records 0005 and 0006.
   chart:
     name: Chart
-    uses: zimmertr/yggdrasil/.github/workflows/chart.yml@471e1dd37cbd51b1f247fc02f80556677de2a876 # v2.2.1
+    uses: zimmertr/yggdrasil/.github/workflows/chart.yml@e229a6868b9d1bf4a596e0a8844452770a543a6c # v3.0.0
     permissions:
       contents: read
     with:

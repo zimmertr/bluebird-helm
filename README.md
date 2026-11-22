@@ -2,7 +2,7 @@
 
 Helm chart for [Bluebird](https://github.com/zimmertr/bluebird), published as an OCI artifact to GHCR.
 
-- **Chart:** [`charts/bluebird`](./charts/bluebird) — see its [README](./charts/bluebird/README.md) for values and usage.
+- **Chart:** [`charts/bluebird`](./charts/bluebird). See its [README](./charts/bluebird/README.md) for values and usage.
 - **OCI location:** `oci://ghcr.io/zimmertr/bluebird-helm`
 
 ## Release process

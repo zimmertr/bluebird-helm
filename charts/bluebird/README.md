@@ -1,6 +1,6 @@
 # bluebird
 
-A Helm chart for [Bluebird](https://github.com/zimmertr/bluebird) — a map-based weather window finder for hikers and mountaineers, live at [bluebirdforecast.com](https://bluebirdforecast.com).
+A Helm chart for [Bluebird](https://github.com/zimmertr/bluebird), a map-based weather window finder for hikers and mountaineers, live at [bluebirdforecast.com](https://bluebirdforecast.com).
 
 By default the chart deploys a **Deployment** + **Service** and a **PostgreSQL** database with PostGIS for the app's shared cache, which the [CloudNativePG](https://cloudnative-pg.io) operator runs, so the operator must already be installed. With `database.enabled=false` the chart runs on any standard Kubernetes cluster with no extra operators, and the app works without the cache. **Argo Rollouts** (canary / blue-green) and **Istio** ingress are entirely opt-in.
 
@@ -59,13 +59,13 @@ sources:
 | `useRollout` | `strategy` | Rendered kind | Strategy block |
 |---|---|---|---|
 | `false` (default) | `RollingUpdate` (default) | `Deployment` | `rollingUpdate` (optional; unset = API defaults) |
-| `false` | `Recreate` | `Deployment` | — |
-| `true` | `Canary` | Argo `Rollout` | `canary` — the full [Rollout canary spec](https://argo-rollouts.readthedocs.io/en/stable/features/specification/) |
-| `true` | `BlueGreen` | Argo `Rollout` | `blueGreen` — the full Rollout blue-green spec |
+| `false` | `Recreate` | `Deployment` | None |
+| `true` | `Canary` | Argo `Rollout` | `canary`: the full [Rollout canary spec](https://argo-rollouts.readthedocs.io/en/stable/features/specification/) |
+| `true` | `BlueGreen` | Argo `Rollout` | `blueGreen`: the full Rollout blue-green spec |
 
 The `canary` / `blueGreen` blocks are tpl-rendered, so the shipped defaults (service names, `role:` pod metadata) track the release name and per-PR preview releases keep working; overrides follow normal Helm coalescing (maps deep-merge, lists like `steps` replace wholesale). `Canary`/`BlueGreen` also render a second `-canary` Service whose name follows `canaryService`/`previewService`.
 
-The defaults deliberately stop at what works on any cluster: a bare `strategy: Canary` progresses by ReplicaSet-ratio weighting. Everything environment-specific is opt-in through the same verbatim block — e.g. Istio traffic shifting against the chart's VirtualService (requires `ingress.enabled: true`):
+The defaults deliberately stop at what works on any cluster: a bare `strategy: Canary` progresses by ReplicaSet-ratio weighting. Everything environment-specific is opt-in through the same verbatim block, e.g. Istio traffic shifting against the chart's VirtualService (requires `ingress.enabled: true`):
 
 ```yaml
 canary:
@@ -77,11 +77,11 @@ canary:
         routes: ['{{ include "bluebird.fullname" . }}-stable']
 ```
 
-`analysis`, `experiment` steps, `managedRoutes`, plural `virtualServices`, `pingPong`, ... — any upstream field works the same way. Referenced `AnalysisTemplate`s are not rendered by this chart; deploy them alongside it.
+`analysis`, `experiment` steps, `managedRoutes`, plural `virtualServices`, `pingPong`, ...: any upstream field works the same way. Referenced `AnalysisTemplate`s are not rendered by this chart; deploy them alongside it.
 
 > **Behavior change vs 0.4.x:** probes now default to `GET /healthz` instead of `GET /`, and a Rollout requires `useRollout: true` rather than being implied by `strategy: Canary`.
 
-> **Breaking change vs 0.1.x:** `canary.trafficRouting` is no longer a boolean (nor a default) — supply the verbatim `trafficRouting` map above to keep the previous `true` behavior. `canary.dynamicStableScale` is likewise no longer defaulted on. The default image tag is now the chart `appVersion` instead of `latest`, which the image repo never publishes.
+> **Breaking change vs 0.1.x:** `canary.trafficRouting` is no longer a boolean (nor a default). Supply the verbatim `trafficRouting` map above to keep the previous `true` behavior. `canary.dynamicStableScale` is likewise no longer defaulted on. The default image tag is now the chart `appVersion` instead of `latest`, which the image repo never publishes.
 
 ## Values
 
@@ -98,7 +98,7 @@ canary:
 | `containerPort` | `8000` | Container port |
 | `metrics.port` | `9464` | The app's Prometheus metrics server. One value drives the `METRICS_PORT` env, the `metrics` containerPort, and the port the PodMonitor scrapes, so they cannot drift apart; `0` disables the server and removes the port. Deliberately never added to the Service, so the metrics surface is unreachable through anything that routes Service ports (the gateway included) |
 | `metrics.podMonitor.enabled` | `false` | Render a `monitoring.coreos.com/v1` PodMonitor scraping the pod port directly. Off by default because the prometheus-operator CRDs must exist first. The pods' `role` label (`stable`/`canary`, from the Rollout metadata) is copied onto every series so the two revisions' metrics are separable |
-| `extraEnv` | the app's env surface at its baked-in defaults | Container env vars. Ships fully populated as documentation-that-deploys: every tunable the app reads, at the value it would use anyway — except `METRICS_PORT`, which is first-class as `metrics.port` because two other rendered facts hang off it, and `DATABASE_URL` and `DATABASE_READ_ONLY`, which come from the `database` values below so an `extraEnv` override cannot drop them. Helm replaces lists wholesale, so an override must supply the complete list it wants (see below) |
+| `extraEnv` | the app's env surface at its baked-in defaults | Container env vars. Ships fully populated as documentation-that-deploys: every tunable the app reads, at the value it would use anyway, except `METRICS_PORT`, which is first-class as `metrics.port` because two other rendered facts hang off it, and `DATABASE_URL` and `DATABASE_READ_ONLY`, which come from the `database` values below so an `extraEnv` override cannot drop them. Helm replaces lists wholesale, so an override must supply the complete list it wants (see below) |
 | `resources` | CPU request `250m`, memory `512Mi`/`2Gi` | Container resource requests/limits. Sized from cgroup measurements against production; **no CPU limit** by design, since CFS throttling costs tail latency on a latency-sensitive async service for no benefit. The memory request covers the resident national wildfire-perimeter snapshot the app holds from 0.44 onward (measured 225-253Mi steady across three replicas, 2026-08; the snapshot grows with the national fire count, so the request holds roughly twice that for fire season) |
 | `podSecurityContext` | `runAsNonRoot`, uid/gid `10001`, `seccompProfile: RuntimeDefault` | Pod-level security context, asserting what the image already provides |
 | `securityContext` | `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop: [ALL]` | Container-level security context. The read-only root needs no writable volume: the app writes nothing to disk |
@@ -116,9 +116,9 @@ canary:
 | `useRollout` | `false` | Render an Argo `Rollout` instead of a `Deployment` |
 | `progressDeadlineSeconds` | *unset* | Deployment and Rollout; unset = the API default of 600s |
 | `progressDeadlineAbort` | `false` | Rollout only. Exceeding the deadline otherwise marks it Degraded but never rolls back |
-| `strategy` | `RollingUpdate` | `RollingUpdate` \| `Recreate` \| `Canary` \| `BlueGreen` — selects which block below applies |
+| `strategy` | `RollingUpdate` | `RollingUpdate` \| `Recreate` \| `Canary` \| `BlueGreen`: selects which block below applies |
 | `rollingUpdate` | *unset* | Optional Deployment `spec.strategy.rollingUpdate`, verbatim (`maxSurge`/`maxUnavailable`); unset = API defaults |
-| `canary` | services, `role:` pod metadata, steps `33 → 66 → 100` | Rollout `spec.strategy.canary`, verbatim + tpl-rendered — any upstream field works (`trafficRouting`, `analysis`, `stableMetadata`, ...) |
+| `canary` | services, `role:` pod metadata, steps `33 → 66 → 100` | Rollout `spec.strategy.canary`, verbatim + tpl-rendered: any upstream field works (`trafficRouting`, `analysis`, `stableMetadata`, ...) |
 | `blueGreen` | services | Rollout `spec.strategy.blueGreen`, verbatim + tpl-rendered |
 | `podAnnotations` / `podLabels` | `{}` | Extra pod metadata |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` / `[]` / `{}` | Scheduling |
@@ -202,7 +202,7 @@ count, a range rather than a fixed number once `autoscaling` is enabled. Full se
 [docs/CONFIGURATION.md](https://github.com/zimmertr/bluebird/blob/main/docs/CONFIGURATION.md) and
 [docs/TRAFFIC.md](https://github.com/zimmertr/bluebird/blob/main/docs/TRAFFIC.md).
 
-Because Helm replaces lists, overriding `extraEnv` replaces this whole set —
+Because Helm replaces lists, overriding `extraEnv` replaces this whole set, so
 restate every variable you still want declared (dropping one only reverts the
 app to that same baked-in default, so the risk is documentation drift, not
 behavior drift).

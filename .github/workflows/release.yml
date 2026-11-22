@@ -3,8 +3,8 @@ name: Release Chart
 # A chart release, every step of it a job of yggdrasil's release module: it
 # reads the version from the squash commit's title (GitVersion, the module's
 # default patterns), makes the git tag and GitHub release, pushes the chart
-# under that version, and only then points Kubernetes-Manifests at it.
-# Decision record 0005.
+# under that version with signed provenance, and only then points
+# Kubernetes-Manifests at it. Decision record 0005.
 on:
   push:
     branches:
@@ -28,10 +28,12 @@ permissions: {}
 jobs:
   release:
     name: Release
-    uses: zimmertr/yggdrasil/.github/workflows/release.yml@471e1dd37cbd51b1f247fc02f80556677de2a876 # v2.2.1
+    uses: zimmertr/yggdrasil/.github/workflows/release.yml@e229a6868b9d1bf4a596e0a8844452770a543a6c # v3.0.0
     permissions:
       contents: write # the tag and release
       packages: write # the chart, pushed to oci://ghcr.io/zimmertr
+      attestations: write # its signed build provenance
+      id-token: write # the token Sigstore signs it with
     with:
       # No image, so the chart keeps the appVersion in its Chart.yaml: its
       # default image tag, which Bluebird's release sets by PR, so it always
