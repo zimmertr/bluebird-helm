@@ -70,6 +70,7 @@ tests:
               - {uri: {prefix: /api/config}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
               - {uri: {prefix: /api/landmarks}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
               - {uri: {prefix: /api/snow-depth}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
+              - {uri: {prefix: /api/reports}, headers: {x-forwarded-for: *tunnel-peer}, gateways: [bluebird]}
             route: &canary-pair
               - destination: {host: bluebird, port: {number: 8000}}
                 weight: 100
@@ -94,6 +95,7 @@ tests:
               - {uri: {prefix: /api/config}, gateways: [bluebird]}
               - {uri: {prefix: /api/landmarks}, gateways: [bluebird]}
               - {uri: {prefix: /api/snow-depth}, gateways: [bluebird]}
+              - {uri: {prefix: /api/reports}, gateways: [bluebird]}
             headers: &strip
               request:
                 remove: [cf-connecting-ip]

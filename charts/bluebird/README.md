@@ -139,9 +139,9 @@ canary:
 | `database.existingSecret` | `""` | For a release that reads another release's database instead of running its own, like a PR preview: a Secret whose `uri` key is the connection string. Read only while `database.enabled` is `false` |
 | `database.readOnly` | `false` | Read the cache without writing it: no migrations, no refreshes, counters per pod. For a login that can only read |
 | `database.*` | PostgreSQL `17`, PostGIS `3.5`, three instances, `10Gi` each, a PDB, no superuser, `max_connections` `200` | Everything else under `database` is the CloudNativePG [`cluster` chart's values](https://github.com/cloudnative-pg/charts/tree/main/charts/cluster), passed through. Three instances because every search reads it: a drain or a failed instance hands over to a standby in seconds. 200 connections so ten replicas at `DATABASE_POOL_MAX` and the PR previews fit with room |
-| `fill.enabled` | `true` | Render the planet fill's CronJob while `database.enabled` is `true`. It builds the places table from the OpenStreetMap planet file once per rules version: a weekly check that most weeks exits in seconds, and a fill that downloads about 95 GB and took about 80 minutes to reach the load on a six-core worker, 24 of them the download at 62 MiB/s (2026-10-20) |
+| `fill.enabled` | `true` | Render the planet fill's CronJob while `database.enabled` is `true`. It builds the places table from the OpenStreetMap planet file once per rules version: a daily check that most days exits in seconds, and a fill that downloads about 95 GB and took about 80 minutes to reach the load on a six-core worker, 24 of them the download at 62 MiB/s (2026-10-20) |
 | `fill.image.name` / `fill.image.tag` | `ghcr.io/zimmertr/bluebird-fill` / `""` → chart `appVersion` | The fill image, released with the app at the same version |
-| `fill.schedule` | `17 9 * * 0` | When the weekly check runs |
+| `fill.schedule` | `17 9 * * *` | When the daily check runs |
 | `fill.scratch.size` / `fill.scratch.storageClass` | `120Gi` / `""` (cluster default) | The fill's working space, an ephemeral volume created with its pod and deleted with it. Room for the planet and about 10% more |
 | `fill.resources` | memory `5Gi`/`6Gi`, CPU request `500m` | Measured on the first planet fill, 2026-10-20: `osmium getid` peaked at 4,431 MiB and the container at 4,489 MiB. The request sits 500 MiB over that peak, because `getid` sizes its index by OpenStreetMap's highest ids, which only grow, and a fill over its request is the first a node short of memory evicts; the limit leaves 1 GiB above the request |
 | `fill.activeDeadlineSeconds` | `43200` | A fill still running after 12 hours has stalled |
@@ -184,6 +184,10 @@ tuned. Deploying the defaults unchanged is a no-op for behavior.
 | `RATE_LIMIT_LANDMARKS_BURST` | `30` | Landmark requests an idle client may send back-to-back |
 | `RATE_LIMIT_SNOW_DEPTH_PER_MINUTE` | `30` | Per-client-address `POST /api/snow-depth` requests per minute; `0` disables. The app asks once per analysis, and the database answers it with no upstream |
 | `RATE_LIMIT_SNOW_DEPTH_BURST` | `10` | Snow depth requests an idle client may send back-to-back |
+| `RATE_LIMIT_REPORTS_PER_MINUTE` | `30` | Per-client-address `POST /api/reports` requests per minute; `0` disables. The app sends one per analysis and one per map load, and a report reaches nothing but a counter, so this only has to stop a script |
+| `RATE_LIMIT_REPORTS_BURST` | `10` | Reports an idle client may send back-to-back |
+| `OPEN_METEO_MIRRORS` | `""` | This deployment's own copies of Open-Meteo, as comma-separated https origins. `/api/capabilities` publishes them ahead of Open-Meteo's public hosts, the browser asks them first, and the page's `connect-src` allows them. Empty is the public hosts alone |
+| `SERVICE_WORKER` | `""` | Empty keeps a service worker that serves the last page while the pod cannot be reached; `false` (or `0`, `no`, `off`) removes it from every browser on its next load |
 | `DATABASE_POOL_MAX` | `10` | Database connections each pod may hold. A pod opens them only as it needs them; each refresh holds one for as long as it runs |
 | `UPSTREAM_CONCURRENCY_WEATHER` | `4` | In-flight Open-Meteo weather batches per pod, across all concurrent analyses (fairness knob; the weighted budgets are the rate protection) |
 | `UPSTREAM_CONCURRENCY_AQI` | `4` | Same cap for the air-quality API |
