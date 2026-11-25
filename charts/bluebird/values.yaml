@@ -110,6 +110,19 @@ extraEnv:
     value: "3600"
   - name: SNODAS_RETRY_AFTER_FAILURE_S
     value: "300"
+  - name: RATE_LIMIT_REPORTS_PER_MINUTE
+    value: "30"
+  - name: RATE_LIMIT_REPORTS_BURST
+    value: "10"
+  # Empty: Open-Meteo's public hosts alone. A deployment's own copies go here
+  # as comma-separated https origins, asked ahead of the public hosts
+  # (bluebird record 0345).
+  - name: OPEN_METEO_MIRRORS
+    value: ""
+  # Empty: the page keeps a service worker for a visit when the pod cannot be
+  # reached. "false" takes it out of every browser (bluebird record 0349).
+  - name: SERVICE_WORKER
+    value: ""
 # The shared cache (bluebird#760): one PostgreSQL with PostGIS holding every
 # OpenStreetMap peak, lake, trailhead and crag, the wildfire, closure and smoke
 # snapshots, and the counters behind the rate limits, so every pod reads the
@@ -167,10 +180,11 @@ database:
       size: 10Gi
 
 # Builds the database's places table from the OpenStreetMap planet file, once
-# per rules version (bluebird#760). A weekly check: most weeks it finds the
-# table current and exits in seconds. Weekly because every check creates and
-# deletes the scratch volume, and only a release that changes the rules needs a
-# refill; start one sooner with `kubectl create job --from=cronjob/<release>-fill`. A fill downloads the planet (about
+# per rules version (bluebird#760). A daily check: most days it finds the
+# table current and exits in seconds. Daily rather than hourly because every
+# check creates and deletes the scratch volume, and daily rather than weekly
+# because a new or lost database searches Overpass until it runs (bluebird
+# docs/RELIABILITY.md; record 0007); start one sooner with `kubectl create job --from=cronjob/<release>-fill`. A fill downloads the planet (about
 # 95 GB) to `scratch`, an ephemeral volume deleted with the Job. The first one
 # took about 80 minutes to reach the load on a six-core worker, 24 of them the
 # download at 62 MiB/s (2026-10-20). Rendered only while `database.enabled` is
@@ -183,7 +197,7 @@ fill:
     # because both read the same rules.
     tag: ""
     pullPolicy: IfNotPresent
-  schedule: "17 9 * * 0"
+  schedule: "17 9 * * *"
   # Room for the planet and what the fill writes beside it (about 10% more).
   # Empty storageClass uses the cluster's default.
   scratch:
@@ -432,6 +446,7 @@ ingress:
     - /api/config
     - /api/landmarks
     - /api/snow-depth
+    - /api/reports
   # Published only to a request carrying an Open-Meteo API key in the
   # X-Open-Meteo-Key header (bluebird#317). One analyze request can spend
   # thousands of weighted Open-Meteo calls; the app sends a keyed one to

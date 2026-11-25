@@ -51,6 +51,7 @@ tests:
               - {uri: {prefix: /api/config}, gateways: [bluebird]}
               - {uri: {prefix: /api/landmarks}, gateways: [bluebird]}
               - {uri: {prefix: /api/snow-depth}, gateways: [bluebird]}
+              - {uri: {prefix: /api/reports}, gateways: [bluebird]}
             route: &canary-pair
               - destination: {host: bluebird, port: {number: 8000}}
                 weight: 100
